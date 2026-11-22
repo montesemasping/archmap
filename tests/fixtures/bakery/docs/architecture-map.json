@@ -1,0 +1,116 @@
+{
+  "$schema": "archmap/1",
+  "meta": {
+    "project": "bakery",
+    "title": "Bakery ordering app",
+    "updated_at": "2026-11-22",
+    "purpose": "Customers browse the menu and place pickup orders.",
+    "stack": {"backend": "Python", "frontend": "plain JavaScript"},
+    "layers": [
+      {"id": "backend", "title": "Backend", "hint": "Python modules under app/"},
+      {"id": "frontend", "title": "Frontend", "hint": "Browser code under web/"},
+      {"id": "legacy"}
+    ],
+    "entrypoints": [
+      {"path": "app/orders/api.py", "what": "Order handlers"},
+      {"path": "web/app.js", "what": "Storefront bootstrap"},
+      {"what": "Everything else is reachable from these two"}
+    ],
+    "conventions": ["Prices are floats rounded to cents", "One module per concern"],
+    "maintenance": "Update this map when a module is added or moved.",
+    "source_url": "https://example.com/bakery/blob/main/{path}#L{line}",
+    "coverage": {
+      "core": ["app/**", "web/**"],
+      "ignored": [{"glob": "web/legacy.js", "why": "Old widget, not part of the storefront"}]
+    },
+    "secret_allow": [
+      {"match": "password = devpassword", "why": "Sample dev value quoted in a gotcha"}
+    ]
+  },
+  "nodes": [
+    {
+      "id": "orders-api",
+      "label": "Orders API",
+      "layer": "backend",
+      "kind": "service",
+      "files": ["app/orders/api.py", "app/orders/models.py", "app/orders/pricing.py"],
+      "summary": "Accepts orders and computes their total.",
+      "details": ["Bulk discount applies from 12 items", "Totals are rounded to cents"],
+      "api": ["place_order(items, customer)"],
+      "tech": "Python"
+    },
+    {
+      "id": "menu-catalog",
+      "label": "Menu catalog",
+      "layer": "backend",
+      "kind": "service",
+      "files": ["app/menu/*.py", "app/menu/assets/"],
+      "summary": "Serves menu items and their pictures."
+    },
+    {
+      "id": "storefront",
+      "label": "Storefront",
+      "layer": "frontend",
+      "kind": "ui",
+      "files": ["web/app.js", "web/cart.js", "web/style.css"],
+      "summary": "Shows the menu and keeps the cart."
+    },
+    {
+      "id": "receipt-printer",
+      "label": "Receipt printer",
+      "layer": "legacy",
+      "status": "legacy",
+      "summary": "Retired in-store printer integration, kept as a note."
+    }
+  ],
+  "edges": [
+    {"from": "storefront", "to": "orders-api", "label": "submits orders", "kind": "http"},
+    {"from": "storefront", "to": "menu-catalog", "label": "reads menu"},
+    {"from": "orders-api", "to": "menu-catalog"},
+    {"from": "orders-api", "to": "receipt-printer", "label": "formerly printed"}
+  ],
+  "flows": [
+    {
+      "id": "checkout",
+      "title": "Checkout",
+      "summary": "A customer places an order.",
+      "tags": ["orders"],
+      "steps": [
+        {"node": "storefront", "note": "Cart is submitted.", "path": "web/cart.js", "line": 8},
+        {"node": "orders-api", "note": "Order is built and priced.", "path": "app/orders/api.py", "line": 6, "symbol": "place_order"},
+        {"node": "menu-catalog", "note": "Prices come from the catalog."}
+      ]
+    },
+    {
+      "id": "browse-menu",
+      "title": "Browse the menu",
+      "steps": [
+        {"node": "storefront", "note": "Page asks for the menu.", "path": "web/app.js"},
+        {"node": "menu-catalog", "note": "Items are listed.", "path": "app/menu/"}
+      ]
+    }
+  ],
+  "reading_order": [
+    {"path": "app/orders/api.py", "why": "Shows the main use case"},
+    {"why": "Then read the storefront"},
+    {"path": "web/app.js", "why": "Browser side"}
+  ],
+  "gotchas": [
+    "Quantities are not validated yet",
+    {"text": "The sample config uses password = devpassword locally", "path": "app/orders/models.py"}
+  ],
+  "unknowns": [
+    "Whether orders need an expiry",
+    {"text": "Pricing rules for holidays", "path": "app/orders/pricing.py"}
+  ],
+  "sections": {
+    "roadmap": {
+      "title": "Roadmap",
+      "body": {"next": ["Pickup slots"], "later": {"payments": "online", "loyalty": ["stamps"]}}
+    },
+    "how_to_read": {
+      "title": "How to read this map",
+      "items": ["Start from the flows", "Then open the nodes"]
+    }
+  }
+}
