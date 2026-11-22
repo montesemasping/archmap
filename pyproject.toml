@@ -17,7 +17,7 @@ dev = ["pytest"]
 archmap = "archmap.cli:main"
 
 [tool.setuptools.dynamic]
-version = { attr = "archmap.__version__" }
+version = { attr = "archmap._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
