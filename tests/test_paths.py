@@ -170,3 +170,7 @@ def test_count_lines_binary(am, tmp_path):
 def test_count_lines_nul_after_8k_but_invalid_utf8(am, tmp_path):
     p = touch(tmp_path, "c.bin", b"a" * 9000 + b"\xff")
     assert am.paths.count_lines(p) is None
+
+
+def test_backslash_message_names_the_separator(am):
+    assert "backslash" in am.paths.validate_rel_path("a\b")
