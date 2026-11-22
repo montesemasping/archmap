@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture map</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; color: #1c1c1c; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #161616; } }
+  #problems { border: 1px solid #b3261e; padding: 8px 12px; margin-bottom: 16px; }
+  #problems[hidden] { display: none; }
+  pre { white-space: pre-wrap; margin: 0; }
+  .meta { opacity: .7; }
+</style>
+</head>
+<body>
+<h1 id="title">Architecture map</h1>
+<div id="problems" hidden></div>
+<h2>Nodes</h2>
+<ul id="nodes"></ul>
+<div id="sections"></div>
+<script id="archmap-data" type="application/json">/*__ARCHMAP_DATA__*/</script>
+<script>
+(function () {
+  "use strict";
+  var payload = JSON.parse(document.getElementById("archmap-data").textContent);
+  var map = payload.map || {};
+  var meta = map.meta || {};
+
+  function el(tag, text, className) {
+    var node = document.createElement(tag);
+    if (text !== undefined && text !== null) { node.textContent = String(text); }
+    if (className) { node.className = className; }
+    return node;
+  }
+
+  function renderValue(value, parent) {
+    if (Array.isArray(value)) {
+      var list = el("ul");
+      value.forEach(function (item) {
+        var li = el("li");
+        renderValue(item, li);
+        list.appendChild(li);
+      });
+      parent.appendChild(list);
+    } else if (value !== null && typeof value === "object") {
+      var dl = el("dl");
+      Object.keys(value).forEach(function (key) {
+        dl.appendChild(el("dt", key));
+        var dd = el("dd");
+        renderValue(value[key], dd);
+        dl.appendChild(dd);
+      });
+      parent.appendChild(dl);
+    } else {
+      parent.appendChild(el("span", value));
+    }
+  }
+
+  document.title = (meta.title || "Architecture map");
+  document.getElementById("title").textContent = meta.title || "Architecture map";
+
+  var problems = payload.problems || [];
+  if (problems.length) {
+    var box = document.getElementById("problems");
+    box.hidden = false;
+    box.appendChild(el("strong", problems.length + " problem(s) found by archmap check"));
+    problems.forEach(function (line) { box.appendChild(el("pre", line)); });
+  }
+
+  var nodesList = document.getElementById("nodes");
+  (Array.isArray(map.nodes) ? map.nodes : []).forEach(function (node) {
+    var li = el("li", (node.label || node.id) + " ");
+    li.appendChild(el("span", "(" + (node.layer || "no layer") + ")", "meta"));
+    if (node.summary) { li.appendChild(el("div", node.summary)); }
+    nodesList.appendChild(li);
+  });
+
+  var sectionsBox = document.getElementById("sections");
+  var sections = map.sections && typeof map.sections === "object" ? map.sections : {};
+  Object.keys(sections).forEach(function (key) {
+    var section = sections[key] || {};
+    sectionsBox.appendChild(el("h2", section.title || key));
+    renderValue(section.body !== undefined ? section.body : section.items, sectionsBox);
+  });
+})();
+</script>
+</body>
+</html>
