@@ -1,4 +1,6 @@
 """Every guard code has at least one mutation of the clean fixture that triggers it."""
+import base64
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -7,6 +9,7 @@ import pytest
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bakery"
 MAP_REL = "docs/architecture-map.json"
+RANDOM_B64 = base64.urlsafe_b64encode(hashlib.sha256(b"x").digest() * 2).decode()
 
 def _step(d):
     return d["flows"][0]["steps"][1]  # has path, line and symbol
@@ -127,9 +130,11 @@ MAP_MUTATIONS = [
     ("secret-suspect-connection-string", _set(["gotchas", 0], "Use postgres://u:p@h/db for tests"), "secret-suspect"),
     ("secret-suspect-assignment", _set(["gotchas", 0], "token = abcdef123456"), "secret-suspect"),
     ("secret-suspect-hex", _set(["gotchas", 0], "id 0123456789abcdef0123456789abcdef here"), "secret-suspect"),
-    ("secret-suspect-base64", _set(["gotchas", 0], "Zm9vQmFyMTIzNDU2Nzg5MEFiQ2RFZkdoSWpLbE1uT3A="), "secret-suspect"),
+    ("secret-suspect-base64", _set(["gotchas", 0], RANDOM_B64), "secret-suspect"),
     ("secret-suspect-key-prefix", _set(["gotchas", 0], "key AKIAABCDEFGHIJKLMNOP"), "secret-suspect"),
     ("secret-suspect-in-section", _set(["sections", "roadmap", "body"], {"x": ["ghp_" + "a1" * 20]}), "secret-suspect"),
+    ("secret-suspect-env-style-assignment", _set(["gotchas", 0], "DB_PASSWORD=hunter2hunter2"), "secret-suspect"),
+    ("secret-allow-short-match", _set(["meta", "secret_allow", 0, "match"], "short"), "field-invalid"),
     ("secret-allow-no-why", _delete(["meta", "secret_allow", 0, "why"]), "secret-allow-no-why"),
     ("secret-allow-blank-why", _set(["meta", "secret_allow", 0, "why"], ""), "secret-allow-no-why"),
     ("secret-allow-unused", _set(["meta", "secret_allow", 0, "match"], "zzz-never-present"), "secret-allow-unused"),

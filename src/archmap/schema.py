@@ -45,6 +45,7 @@ IGNORED_REQUIRED = ("glob",)
 
 SECRET_ALLOW_FIELDS = {"match": "str", "why": "str"}
 SECRET_ALLOW_REQUIRED = ("match",)
+SECRET_ALLOW_MIN_MATCH = 6  # shorter matches would silence unrelated findings
 
 LAYER_FIELDS = {"id": "str", "title": "str", "hint": "str"}
 LAYER_REQUIRED = ("id",)

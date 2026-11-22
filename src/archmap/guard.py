@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -14,44 +13,7 @@ from . import schema
 from .paths import count_lines, covers, exists_exact, expand_glob, is_glob, validate_rel_path
 from .problems import Problem
 from .secrets import find_secrets
-
-
-GUARD_CODES: frozenset[str] = frozenset({
-    "schema-missing", "schema-unknown", "section-missing", "field-missing", "field-invalid",
-    "field-unknown", "id-duplicate", "layer-undeclared", "path-invalid", "path-missing",
-    "glob-empty", "line-invalid", "edge-dangling", "edge-self", "node-orphan",
-    "step-node-missing", "flow-too-short",
-    "coverage-core-empty", "coverage-core-glob-empty", "coverage-uncovered",
-    "coverage-ignore-no-why", "coverage-ignore-unused",
-    "secret-suspect", "secret-allow-no-why", "secret-allow-unused",
-})
-
-
-def _problem(code: str, where: str, message: str) -> Problem:
-    if code not in GUARD_CODES:  # a programming error, never caused by map content
-        raise AssertionError(f"unregistered guard code {code!r}")
-    return Problem(code, where or "$", message)
-
-
-def _join(where: str, key: str) -> str:
-    return f"{where}.{key}" if where else key
-
-
-_SAFE_ID = re.compile(r"[A-Za-z0-9._:-]+")
-
-
-def _ident(obj: Any, index: int) -> str:
-    """Address an object by its id when it is a plain token, otherwise by index."""
-    if isinstance(obj, dict):
-        value = obj.get("id")
-        if isinstance(value, str) and _SAFE_ID.fullmatch(value):
-            return value
-    return str(index)
-
-
-def _seg(key: str) -> str:
-    """A key or section name as a `where` segment, with control characters escaped."""
-    return key if _SAFE_ID.fullmatch(key) else ascii(key)
+from .where import GUARD_CODES, _SAFE_ID, _ident, _join, _problem, _seg  # noqa: F401
 
 
 def _blank(value: Any) -> bool:
@@ -203,7 +165,13 @@ class _Guard:
         allow = meta.get("secret_allow")
         if isinstance(allow, list):
             for i, item in enumerate(allow):
-                self.fields(item, f"meta.secret_allow[{i}]", schema.SECRET_ALLOW_FIELDS, schema.SECRET_ALLOW_REQUIRED)
+                if self.fields(item, f"meta.secret_allow[{i}]", schema.SECRET_ALLOW_FIELDS, schema.SECRET_ALLOW_REQUIRED):
+                    match = item.get("match")
+                    if isinstance(match, str) and 0 < len(match.strip()) and len(match) < schema.SECRET_ALLOW_MIN_MATCH:
+                        self.add(
+                            "field-invalid", f"meta.secret_allow[{i}].match",
+                            f"match must be at least {schema.SECRET_ALLOW_MIN_MATCH} characters",
+                        )
         return layer_ids
 
     def nodes(self, nodes: Any, layer_ids: Optional[set]) -> Optional[set]:
