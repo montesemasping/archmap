@@ -7,21 +7,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import __version__
+from ._version import __version__
 from .guard import check_map
 from .loader import MapLoadError, load_map
 
 DEFAULT_MAP = Path("docs") / "architecture-map.json"
 
 
-class _Parser(argparse.ArgumentParser):
-    def error(self, message: str):  # argparse exits with 2 on usage errors already
-        self.print_usage(sys.stderr)
-        self.exit(2, f"{self.prog}: error: {message}\n")
-
-
 def _build_parser() -> argparse.ArgumentParser:
-    parser = _Parser(prog="archmap", description="Guard a project's architecture map.")
+    parser = argparse.ArgumentParser(prog="archmap", description="Guard a project's architecture map.")
     parser.add_argument("--version", action="version", version=f"archmap {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     check = sub.add_parser("check", help="check the map against the code")
@@ -32,6 +26,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _cmd_check(args: argparse.Namespace) -> int:
     root = Path(args.root)
+    if not root.is_dir():
+        print(f"archmap: root {args.root!r} is not a directory", file=sys.stderr)
+        return 2
     map_path = Path(args.map) if args.map else root / DEFAULT_MAP
     try:
         data = load_map(map_path)

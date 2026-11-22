@@ -128,10 +128,57 @@ def test_unregistered_code_is_a_programming_error(am):
         guard.add("foo-bar", "x", "nope")
 
 
+def _guard_source():
+    return (Path(__file__).parent.parent / "src" / "archmap" / "guard.py").read_text(encoding="utf-8")
+
+
 def test_every_code_literal_in_guard_source_is_registered(am):
     import re
 
-    src = (Path(__file__).parent.parent / "src" / "archmap" / "guard.py").read_text(encoding="utf-8")
-    literals = set(re.findall(r'(?:\.add|_problem)\(\s*"([a-z-]+)"', src))
+    literals = set(re.findall(r'(?:\.add|_problem)\(\s*"([A-Za-z0-9_-]+)"', _guard_source()))
     assert literals, "scan found no code literals"
     assert literals <= set(am.guard.GUARD_CODES)
+
+
+def test_problems_are_only_built_through_the_registry():
+    import re
+
+    constructions = re.findall(r"(?<![A-Za-z_])Problem\(", _guard_source())
+    assert len(constructions) == 1  # the one inside _problem
+
+
+def test_read_error_on_line_check_is_line_invalid(am, monkeypatch):
+    def boom(path):
+        raise OSError("denied")
+
+    monkeypatch.setattr(am.guard, "count_lines", boom)
+    problems = am.check_map(load_fixture_map(), FIXTURE)
+    assert any(p.code == "line-invalid" and "cannot read" in p.message for p in problems)
+
+
+def test_id_with_control_characters_falls_back_to_index(am):
+    data = load_fixture_map()
+    data["nodes"][0]["id"] = "evil\nid"
+    data["nodes"][0]["files"].append("app/gone.py")
+    problems = am.check_map(data, FIXTURE)
+    for p in problems:
+        assert "\n" not in p.where
+        assert "\n" not in str(p)
+    assert any(p.where == "nodes[0].files[3]" for p in problems)
+
+
+def test_unknown_key_and_section_name_are_escaped(am):
+    data = load_fixture_map()
+    data["bad\nkey"] = 1
+    data["sections"]["sec\ntion"] = {"title": "t"}
+    problems = am.check_map(data, FIXTURE)
+    assert problems
+    for p in problems:
+        assert "\n" not in p.where
+        assert "\n" not in str(p)
+
+
+def test_str_problem_escapes_control_characters(am):
+    text = str(am.Problem("x", "a\nb", "m\r\u2028z"))
+    assert "\n" not in text and "\r" not in text and "\u2028" not in text
+    assert "\\u000a" in text

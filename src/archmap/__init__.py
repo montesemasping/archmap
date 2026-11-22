@@ -1,11 +1,10 @@
 """archmap: guard a project's architecture map and build an offline viewer."""
 
-__version__ = "0.1.0.dev0"
-
-from . import guard, paths  # noqa: E402
-from .cli import main  # noqa: E402
-from .guard import check_map  # noqa: E402
-from .loader import MapLoadError, load_map  # noqa: E402
-from .problems import Problem  # noqa: E402
+from ._version import __version__
+from . import guard, paths
+from .cli import main
+from .guard import check_map
+from .loader import MapLoadError, load_map
+from .problems import Problem
 
 __all__ = ["__version__", "Problem", "MapLoadError", "load_map", "paths", "guard", "check_map", "main"]

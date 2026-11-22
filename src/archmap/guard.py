@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -14,7 +15,7 @@ from .paths import count_lines, exists_exact, expand_glob, is_glob, validate_rel
 from .problems import Problem
 
 
-GUARD_CODES: frozenset = frozenset({
+GUARD_CODES: frozenset[str] = frozenset({
     "schema-missing", "schema-unknown", "section-missing", "field-missing", "field-invalid",
     "field-unknown", "id-duplicate", "layer-undeclared", "path-invalid", "path-missing",
     "glob-empty", "line-invalid", "edge-dangling", "edge-self", "node-orphan",
@@ -32,13 +33,21 @@ def _join(where: str, key: str) -> str:
     return f"{where}.{key}" if where else key
 
 
+_SAFE_ID = re.compile(r"[A-Za-z0-9._:-]+")
+
+
 def _ident(obj: Any, index: int) -> str:
-    """Address an object by its id when it has a usable one, otherwise by index."""
+    """Address an object by its id when it is a plain token, otherwise by index."""
     if isinstance(obj, dict):
         value = obj.get("id")
-        if isinstance(value, str) and value.strip():
+        if isinstance(value, str) and _SAFE_ID.fullmatch(value):
             return value
     return str(index)
+
+
+def _seg(key: str) -> str:
+    """A key or section name as a `where` segment, with control characters escaped."""
+    return key if _SAFE_ID.fullmatch(key) else ascii(key)
 
 
 def _blank(value: Any) -> bool:
@@ -66,7 +75,7 @@ class _Guard:
             return False
         for key in obj:
             if key not in known:
-                self.add("field-unknown", _join(where, key), f"unknown field '{key}'")
+                self.add("field-unknown", _join(where, _seg(key)), f"unknown field {key!r}")
         for key, kind in known.items():
             if key not in obj:
                 continue
@@ -107,6 +116,9 @@ class _Guard:
         kind = exists_exact(self.root, value)
         if kind is None:
             self.add("path-missing", where, f"{value!r} does not exist (names are case-sensitive)")
+        elif kind == "file" and value.endswith("/"):
+            self.add("path-missing", where, f"{value!r} is a file, not a directory")
+            return None
         return kind
 
     def check_line(self, step: dict, where: str, kind: Optional[str]) -> None:
@@ -161,16 +173,22 @@ class _Guard:
         layers = meta.get("layers")
         if isinstance(layers, list):
             layer_ids = set()
+            first_layer: dict = {}
             for i, layer in enumerate(layers):
                 here = f"meta.layers[{i}]"
                 if self.fields(layer, here, schema.LAYER_FIELDS, schema.LAYER_REQUIRED):
-                    if not _blank(layer.get("id")):
-                        layer_ids.add(layer["id"])
+                    lid = layer.get("id")
+                    if not _blank(lid):
+                        if lid in first_layer:
+                            self.add("id-duplicate", f"{here}.id", f"duplicate layer id {lid!r} (first at meta.layers[{first_layer[lid]}])")
+                        else:
+                            first_layer[lid] = i
+                        layer_ids.add(lid)
         self.check_optional_path_items(
             meta.get("entrypoints"), "meta.entrypoints", schema.ENTRYPOINT_FIELDS, schema.ENTRYPOINT_REQUIRED
         )
         coverage = meta.get("coverage")
-        if "coverage" in meta and self.fields(
+        if isinstance(coverage, dict) and self.fields(
             coverage, "meta.coverage", schema.COVERAGE_FIELDS, schema.COVERAGE_REQUIRED
         ):
             self.str_items(coverage.get("core"), "meta.coverage.core")
@@ -280,16 +298,20 @@ class _Guard:
         for i, item in enumerate(items):
             if isinstance(item, str):
                 continue
-            self.fields(item, f"{where}[{i}]", schema.NOTE_FIELDS, schema.NOTE_REQUIRED)
+            here = f"{where}[{i}]"
+            if self.fields(item, here, schema.NOTE_FIELDS, schema.NOTE_REQUIRED) and "path" in item:
+                self.check_path(item["path"], f"{here}.path", allow_glob=False)
 
     def sections(self, sections: Any) -> None:
         if not isinstance(sections, dict):
             return
         for name, section in sections.items():
-            where = f"sections.{name}"
+            where = f"sections.{_seg(name)}"
             if self.fields(section, where, schema.SECTION_FIELDS, schema.SECTION_REQUIRED):
                 if "body" not in section and "items" not in section:
                     self.add("field-missing", f"{where}.body", "a section needs 'body' or 'items'")
+                elif "body" in section and "items" in section:
+                    self.add("field-invalid", f"{where}.items", "give either 'body' or 'items', not both")
 
     # ---- entry ----------------------------------------------------------------
 
@@ -299,7 +321,7 @@ class _Guard:
                 self.add("section-missing", "$", f"missing required section '{key}'")
         for key in data:
             if key not in schema.TOP_FIELDS:
-                self.add("field-unknown", key, f"unknown top-level field '{key}'")
+                self.add("field-unknown", _seg(key), f"unknown top-level field {key!r}")
         for key, kind in schema.TOP_FIELDS.items():
             if key in data and key != "$schema" and not isinstance(data[key], _TYPES[kind]):
                 self.add("field-invalid", key, f"expected {_TYPE_NAMES[kind]}")
@@ -307,10 +329,12 @@ class _Guard:
         node_ids = self.nodes(data.get("nodes"), layer_ids)
         linked = self.edges(data.get("edges"), node_ids)
         if node_ids is not None and isinstance(data.get("edges"), list):
-            for node in data["nodes"]:
+            reported: set = set()
+            for i, node in enumerate(data["nodes"]):
                 nid = node.get("id") if isinstance(node, dict) else None
-                if isinstance(nid, str) and nid.strip() and nid not in linked:
-                    self.add("node-orphan", f"nodes[{nid}]", f"node {nid!r} has no edges")
+                if isinstance(nid, str) and nid.strip() and nid not in linked and nid not in reported:
+                    reported.add(nid)
+                    self.add("node-orphan", f"nodes[{_ident(node, i)}]", f"node {nid!r} has no edges")
         self.flows(data.get("flows"), node_ids)
         self.check_optional_path_items(
             data.get("reading_order"), "reading_order", schema.READING_FIELDS, schema.READING_REQUIRED

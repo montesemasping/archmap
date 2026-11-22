@@ -100,6 +100,20 @@ MAP_MUTATIONS = [
     ("field-unknown-section", _set(["sections", "roadmap", "extra"], 1), "field-unknown"),
     ("id-duplicate-node", _dup("nodes"), "id-duplicate"),
     ("id-duplicate-flow", _dup("flows"), "id-duplicate"),
+    ("id-duplicate-layer", lambda d: d["meta"]["layers"].append({"id": "backend"}), "id-duplicate"),
+    ("field-invalid-section-body-and-items",
+     _set(["sections", "how_to_read", "body"], "x"), "field-invalid"),
+    ("path-invalid-gotcha", _set(["gotchas", 1, "path"], "../x"), "path-invalid"),
+    ("path-invalid-gotcha-glob", _set(["gotchas", 1, "path"], "app/**"), "path-invalid"),
+    ("path-missing-gotcha", _set(["gotchas", 1, "path"], "app/gone.py"), "path-missing"),
+    ("path-invalid-unknown", _set(["unknowns", 1, "path"], "../x"), "path-invalid"),
+    ("path-invalid-unknown-glob", _set(["unknowns", 1, "path"], "app/**"), "path-invalid"),
+    ("path-missing-unknown", _set(["unknowns", 1, "path"], "app/gone.py"), "path-missing"),
+    ("path-missing-files-file-with-slash", _set(["nodes", 0, "files", 0], "app/orders/api.py/"), "path-missing"),
+    ("path-missing-step-file-with-slash", _set(["flows", 0, "steps", 1, "path"], "app/orders/api.py/"), "path-missing"),
+    ("path-missing-entrypoint-file-with-slash", _set(["meta", "entrypoints", 0, "path"], "web/app.js/"), "path-missing"),
+    ("path-missing-reading-file-with-slash", _set(["reading_order", 0, "path"], "web/app.js/"), "path-missing"),
+    ("path-missing-gotcha-file-with-slash", _set(["gotchas", 1, "path"], "web/app.js/"), "path-missing"),
     ("layer-undeclared-node", _set(["nodes", 0, "layer"], "nowhere"), "layer-undeclared"),
     ("path-invalid-files-dotdot", _set(["nodes", 0, "files", 0], "../x.py"), "path-invalid"),
     ("path-invalid-files-backslash", _set(["nodes", 0, "files", 0], "app\\orders\\api.py"), "path-invalid"),
@@ -168,6 +182,31 @@ def test_tree_mutation_is_caught(am, tmp_path, name, mutate, code):
     mutate(root)
     problems = am.check_map(_read(root), root)
     assert code in {p.code for p in problems}, [str(p) for p in problems]
+
+
+def test_trailing_slash_on_file_says_not_a_directory(am, tmp_path):
+    root = _copy(tmp_path)
+    data = _read(root)
+    data["nodes"][0]["files"][0] = "app/orders/api.py/"
+    msgs = [p.message for p in am.check_map(data, root)]
+    assert any("is a file, not a directory" in m for m in msgs)
+
+
+def test_duplicate_node_id_reports_orphan_once(am, tmp_path):
+    root = _copy(tmp_path)
+    data = _read(root)
+    orphan = {"id": "lonely", "label": "L", "layer": "backend", "summary": "s"}
+    data["nodes"] += [orphan, dict(orphan)]
+    codes = [p.code for p in am.check_map(data, root)]
+    assert codes.count("node-orphan") == 1
+
+
+def test_non_object_coverage_is_reported_once(am, tmp_path):
+    root = _copy(tmp_path)
+    data = _read(root)
+    data["meta"]["coverage"] = "x"
+    wheres = [p.where for p in am.check_map(data, root) if p.where == "meta.coverage"]
+    assert len(wheres) == 1
 
 
 def test_every_code_has_a_mutation(am):

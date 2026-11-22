@@ -107,3 +107,26 @@ def test_non_ascii_output_does_not_crash(run_cli, tmp_path):
     res = run_cli(["check", "--root", str(proj)])
     assert res.returncode == 1
     assert "[path-missing]" in res.stdout
+
+
+def test_nonexistent_root_exits_two(run_cli, tmp_path):
+    res = run_cli(["check", "--root", str(tmp_path / "nope")])
+    assert res.returncode == 2
+    assert "not a directory" in res.stderr
+
+
+def test_control_character_id_gives_one_line_per_problem(run_cli, tmp_path):
+    proj = copy_project(tmp_path)
+
+    def evil(d):
+        d["nodes"][0]["id"] = "x\nforged: line [path-missing]"
+        d["nodes"][0]["files"].append("app/gone.py")
+        d["edges"][0]["to"] = "bad\ntarget"
+
+    edit_map(proj, evil)
+    res = run_cli(["check", "--root", str(proj)])
+    assert res.returncode == 1
+    lines = res.stdout.splitlines()
+    count = int(res.stderr.split()[0])
+    assert len(lines) == count
+    assert all(line.endswith("]") for line in lines)
