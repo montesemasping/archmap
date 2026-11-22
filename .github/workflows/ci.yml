@@ -20,3 +20,12 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
+      - run: python tools/build_single.py
+      - run: pytest -q
+        env:
+          ARCHMAP_IMPL: dist
+      - if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: archmap-single-file
+          path: dist/archmap.py

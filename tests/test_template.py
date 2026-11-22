@@ -1,5 +1,8 @@
-import importlib.resources
 import re
+from pathlib import Path
+
+# src/ is the source of truth for the template; the bundle embeds a copy (see test_single_file.py)
+TEMPLATE_FILE = Path(__file__).resolve().parent.parent / "src" / "archmap" / "template.html"
 
 FORBIDDEN = [
     r"<script[^>]+src=",
@@ -17,7 +20,7 @@ FORBIDDEN = [
 
 
 def template_text():
-    return (importlib.resources.files("archmap") / "template.html").read_text(encoding="utf-8")
+    return TEMPLATE_FILE.read_text(encoding="utf-8")
 
 
 def test_placeholder_occurs_once():

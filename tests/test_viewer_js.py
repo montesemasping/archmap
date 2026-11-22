@@ -1,4 +1,3 @@
-import importlib.resources
 import json
 import re
 import shutil
@@ -7,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+TEMPLATE_FILE = Path(__file__).resolve().parent.parent / "src" / "archmap" / "template.html"
 FIXTURE_MAP = Path(__file__).parent / "fixtures" / "bakery" / "docs" / "architecture-map.json"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
@@ -167,4 +167,4 @@ def test_built_page_has_data_block_once(am):
     html = am.render_html(data, [])
     assert html.count('<script id="archmap-data"') == 1
     assert "/*__ARCHMAP_DATA__*/" not in html
-    assert (importlib.resources.files("archmap") / "template.html").read_text(encoding="utf-8").count("/*__ARCHMAP_DATA__*/") == 1
+    assert TEMPLATE_FILE.read_text(encoding="utf-8").count("/*__ARCHMAP_DATA__*/") == 1
