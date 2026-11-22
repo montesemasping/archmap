@@ -95,3 +95,25 @@ def test_build_malformed_map_round_trips(run_cli, tmp_path):
     assert payload["map"]["nodes"] == [None, 5, "x"]
     assert payload["map"]["sections"] == {"a": 3}
     assert payload["problems"]
+
+
+def test_build_lone_surrogate_does_not_crash(run_cli, tmp_path):
+    proj = copy_project(tmp_path)
+    path = proj / MAP_REL
+    text = path.read_text(encoding="utf-8").replace('"Bakery ordering app"', r'"Bakery \ud800 app"')
+    path.write_text(text, encoding="utf-8", newline="\n")
+    res = run_cli(["build", "--root", str(proj)])
+    assert res.returncode in (0, 1), res.stderr
+    assert "Traceback" not in res.stderr
+    assert (proj / DEFAULT_OUT).is_file()
+
+
+def test_build_nan_map_exits_two(run_cli, tmp_path):
+    proj = copy_project(tmp_path)
+    path = proj / MAP_REL
+    text = path.read_text(encoding="utf-8").replace('"Bakery ordering app"', "NaN")
+    path.write_text(text, encoding="utf-8", newline="\n")
+    res = run_cli(["build", "--root", str(proj)])
+    assert res.returncode == 2
+    assert "[json-invalid]" in res.stderr
+    assert not (proj / "runtime").exists()

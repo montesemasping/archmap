@@ -94,7 +94,11 @@ def render_html(data: dict, problems: list[Problem]) -> str:
         "version": __version__,
         "links": _build_links(data) if isinstance(data, dict) else {},
     }
-    text = json.dumps(payload, ensure_ascii=False)
+    try:
+        text = json.dumps(payload, ensure_ascii=True, allow_nan=False)
+    except ValueError:  # NaN or Infinity in data handed in directly: they become null
+        loose = json.dumps(payload, ensure_ascii=True)
+        text = json.dumps(json.loads(loose, parse_constant=lambda _name: None), ensure_ascii=True, allow_nan=False)
     for char, escaped in _ESCAPES.items():
         text = text.replace(char, escaped)
     return _template_text().replace(PLACEHOLDER, text, 1)

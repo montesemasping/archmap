@@ -80,3 +80,9 @@ def test_viewer_rejects_unsafe_link_values(am, tmp_path):
     res = subprocess.run(["node", str(runner), str(page)], capture_output=True, text=True, encoding="utf-8")
     assert res.returncode == 0, res.stderr
     assert json.loads(res.stdout)["anchors"] == []
+
+
+def test_viewer_runs_with_lone_surrogate(am, tmp_path):
+    data = {"meta": {"title": "a\ud800b"}, "nodes": [{"id": "n", "summary": "\ud800"}]}
+    out = run_viewer(tmp_path, am, data)
+    assert out["title"]

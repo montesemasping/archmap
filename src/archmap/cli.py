@@ -71,7 +71,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(render_html(data, problems), encoding="utf-8", newline="\n")
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         print(f"archmap: cannot write {str(out)!r}: {exc}", file=sys.stderr)
         return 2
     print(f"{len(problems)} problem(s)" if problems else "no problems", file=sys.stderr)

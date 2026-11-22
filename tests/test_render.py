@@ -103,3 +103,17 @@ def test_source_link_template_without_line(am):
 
 def test_source_link_encodes_and_keeps_other_braces(am):
     assert am.source_link("https://h/{ref}/{path}", "my dir/a#b.py", None) == "https://h/{ref}/my%20dir/a%23b.py"
+
+
+def test_render_replaces_nan_with_null(am):
+    data = base_map(x=float("nan"), y=[float("inf"), float("-inf"), 1.5])
+    payload = extract(am.render_html(data, []))
+    assert payload["map"]["meta"]["x"] is None
+    assert payload["map"]["meta"]["y"] == [None, None, 1.5]
+
+
+def test_render_lone_surrogate_round_trips(am):
+    data = base_map(summary="a\ud800b")
+    html = am.render_html(data, [])
+    html.encode("utf-8")
+    assert extract(html)["map"] == data
