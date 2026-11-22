@@ -85,3 +85,22 @@ def test_nul_in_path_is_map_missing(am, tmp_path):
     with pytest.raises(am.MapLoadError) as ei:
         am.load_map(str(tmp_path / "a\x00b.json"))
     assert ei.value.problem.code == "map-missing"
+
+
+@pytest.mark.parametrize("const", ["NaN", "Infinity", "-Infinity"])
+def test_non_standard_constants_rejected(am, tmp_path, const):
+    f = tmp_path / "m.json"
+    f.write_text('{"a": %s}' % const, encoding="utf-8")
+    with pytest.raises(am.MapLoadError) as ei:
+        am.load_map(f)
+    assert ei.value.problem.code == "json-invalid"
+    assert const.lstrip("-") in ei.value.problem.message
+
+
+def test_duplicate_keys_rejected(am, tmp_path):
+    f = tmp_path / "m.json"
+    f.write_text('{"a": 1, "nodes": {"id": 1, "id": 2}}', encoding="utf-8")
+    with pytest.raises(am.MapLoadError) as ei:
+        am.load_map(f)
+    assert ei.value.problem.code == "json-invalid"
+    assert "'id'" in ei.value.problem.message
