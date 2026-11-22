@@ -21,9 +21,10 @@ def load_map(path: str | os.PathLike) -> Any:
     try:
         with open(path, "rb") as fh:
             raw = fh.read()
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
+        detail = getattr(exc, "strerror", None) or exc
         raise MapLoadError(
-            Problem("map-missing", where, f"cannot read map file: {exc.strerror or exc}")
+            Problem("map-missing", where, f"cannot read map file: {detail}")
         ) from exc
     try:
         text = raw.decode("utf-8-sig")
@@ -36,4 +37,8 @@ def load_map(path: str | os.PathLike) -> Any:
     except json.JSONDecodeError as exc:
         raise MapLoadError(
             Problem("json-invalid", f"{where}:{exc.lineno}:{exc.colno}", f"invalid JSON: {exc.msg}")
+        ) from exc
+    except (RecursionError, ValueError) as exc:
+        raise MapLoadError(
+            Problem("json-invalid", where, "map cannot be parsed (too deeply nested or a number is too large)")
         ) from exc

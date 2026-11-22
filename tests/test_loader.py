@@ -61,3 +61,27 @@ def test_invalid_utf8_is_json_invalid(am, tmp_path):
     with pytest.raises(am.MapLoadError) as ei:
         am.load_map(f)
     assert ei.value.problem.code == "json-invalid"
+
+
+def test_deeply_nested_is_json_invalid(am, tmp_path):
+    f = tmp_path / "m.json"
+    f.write_text("[" * 200000, encoding="utf-8")
+    with pytest.raises(am.MapLoadError) as ei:
+        am.load_map(f)
+    assert ei.value.problem.code == "json-invalid"
+    assert ei.value.problem.where == str(f)
+
+
+def test_huge_integer_is_json_invalid(am, tmp_path):
+    f = tmp_path / "m.json"
+    f.write_text("1" * 5000, encoding="utf-8")
+    with pytest.raises(am.MapLoadError) as ei:
+        am.load_map(f)
+    assert ei.value.problem.code == "json-invalid"
+    assert ei.value.problem.where == str(f)
+
+
+def test_nul_in_path_is_map_missing(am, tmp_path):
+    with pytest.raises(am.MapLoadError) as ei:
+        am.load_map(str(tmp_path / "a\x00b.json"))
+    assert ei.value.problem.code == "map-missing"
