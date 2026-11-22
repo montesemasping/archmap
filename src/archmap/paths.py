@@ -17,7 +17,7 @@ def validate_rel_path(p: str) -> Optional[str]:
     if not isinstance(p, str) or p == "":
         return "path is empty"
     if "\\" in p:
-        return "path must use '/' as separator, not '\'"
+        return "path must use '/' as separator, not a backslash"
     if p.startswith("/"):
         return "path must be relative, not start with '/'"
     if _DRIVE_RE.match(p):

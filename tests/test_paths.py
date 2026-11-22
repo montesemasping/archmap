@@ -173,4 +173,4 @@ def test_count_lines_nul_after_8k_but_invalid_utf8(am, tmp_path):
 
 
 def test_backslash_message_names_the_separator(am):
-    assert "backslash" in am.paths.validate_rel_path("a\b")
+    assert "backslash" in am.paths.validate_rel_path("a\\b")
