@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ def dist_bundle():
     if _impl() != "dist":
         pytest.skip("needs ARCHMAP_IMPL=dist")
     if not DIST_FILE.is_file():
-        pytest.skip(f"ARCHMAP_IMPL=dist but {DIST_FILE} is missing; build it first")
+        pytest.fail(f"ARCHMAP_IMPL=dist but {DIST_FILE} is missing; run tools/build_single.py first")
     # an editable install may already be imported; the bundle must be the only archmap
     for name in [n for n in sys.modules if n == "archmap" or n.startswith("archmap.")]:
         del sys.modules[name]
@@ -50,7 +51,9 @@ def run_cli():
 
     def _run(args, cwd=None):
         if _impl() == "dist":
-            cmd = [sys.executable, str(DIST_FILE), *args]
+            # isolated, no site: the installed package must not be importable
+            cmd = [sys.executable, "-I", "-S", str(DIST_FILE), *args]
+            cwd = cwd or tempfile.gettempdir()  # never run from inside the repo
         else:
             cmd = [sys.executable, "-m", "archmap", *args]
         return subprocess.run(

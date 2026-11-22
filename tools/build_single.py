@@ -26,6 +26,7 @@ BUNDLE_MODULE_TEMPLATE = (
 LOADER = '''
 import importlib.abc
 import importlib.util
+import linecache
 import sys
 
 
@@ -45,16 +46,27 @@ class _BundleFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     def exec_module(self, module):
         # The import system has already put `module` into sys.modules, as @dataclass needs.
         name = module.__spec__.name
-        exec(compile(_SOURCES[name], "<archmap-bundle>/" + name, "exec"), module.__dict__)
+        source = _SOURCES[name]
+        filename = "<archmap-bundle>/" + name
+        # let tracebacks show source lines (mtime None: never invalidated)
+        linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)
+        exec(compile(source, filename, "exec"), module.__dict__)
 
 
 # Drop stale copies (an installed package, an earlier load of this file) so the bundle wins.
 for _name in [n for n in sys.modules if n == "archmap" or n.startswith("archmap.")]:
     del sys.modules[_name]
 sys.meta_path[:] = [f for f in sys.meta_path if not getattr(f, "_archmap_bundle", False)]
-sys.meta_path.insert(0, _BundleFinder())
+_finder = _BundleFinder()
+sys.meta_path.insert(0, _finder)
 
-import archmap  # noqa: E402
+try:
+    import archmap  # noqa: E402
+except BaseException:
+    sys.meta_path[:] = [f for f in sys.meta_path if f is not _finder]
+    for _name in [n for n in sys.modules if n == "archmap" or n.startswith("archmap.")]:
+        del sys.modules[_name]
+    raise
 
 archmap.__bundled__ = True
 from archmap import *  # noqa: E402,F401,F403

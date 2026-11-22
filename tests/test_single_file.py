@@ -96,3 +96,82 @@ def test_embedded_template_matches_the_source(am):
 
     source = (ROOT / "src" / "archmap" / "template.html").read_bytes().decode("utf-8")
     assert _bundled.TEMPLATE == source.replace("\r\n", "\n")
+
+
+def _isolated(code_or_args, cwd, *, code=False):
+    """Run Python isolated (-I) and without site (-S): the editable install is not importable."""
+    cmd = [sys.executable, "-I", "-S"] + (["-c", code_or_args] if code else code_or_args)
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8")
+
+
+@dist_only
+def test_package_is_absent_without_the_bundle(tmp_path):
+    # `-I` alone still sees the venv's editable install; `-I -S` is what makes the premise true
+    res = _isolated("import archmap", tmp_path, code=True)
+    assert res.returncode != 0
+    assert "ModuleNotFoundError" in res.stderr
+
+
+@dist_only
+def test_bundle_runs_where_the_package_is_absent(tmp_path):
+    proj = tmp_path / "proj"
+    shutil.copytree(FIXTURE, proj)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    res = _isolated([str(DIST_FILE), "--version"], elsewhere)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == f"archmap {header_version()}"
+    res = _isolated([str(DIST_FILE), "check", "--root", str(proj)], elsewhere)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+@dist_only
+def test_bundle_namespace_is_flagged(tmp_path):
+    code = (
+        "import runpy, sys\n"
+        f"ns = runpy.run_path({str(DIST_FILE)!r}, run_name='x')\n"
+        "import archmap\n"
+        "assert ns['__bundled__'] is True and archmap.__bundled__ is True\n"
+        "assert archmap.cli.__spec__.loader.__class__.__name__ == '_BundleFinder'\n"
+        "print('ok')\n"
+    )
+    res = _isolated(code, tmp_path, code=True)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "ok"
+
+
+@dist_only
+def test_tracebacks_from_the_bundle_show_source_lines(tmp_path):
+    code = (
+        "import runpy, traceback\n"
+        f"runpy.run_path({str(DIST_FILE)!r}, run_name='x')\n"
+        "import archmap\n"
+        "try:\n"
+        "    archmap.guard._problem('no-such-code', '', '')\n"
+        "except AssertionError:\n"
+        "    print(traceback.format_exc())\n"
+    )
+    res = _isolated(code, tmp_path, code=True)
+    assert res.returncode == 0, res.stderr
+    assert "<archmap-bundle>/archmap.where" in res.stdout
+    assert 'raise AssertionError(f"unregistered guard code' in res.stdout
+
+
+@dist_only
+def test_failed_bundle_import_leaves_no_trace(tmp_path):
+    broken = DIST_FILE.read_text(encoding="utf-8").replace("'archmap.cli':", "'archmap.cli_x':", 1)
+    assert broken != DIST_FILE.read_text(encoding="utf-8")
+    path = tmp_path / "broken.py"
+    path.write_text(broken, encoding="utf-8", newline="\n")
+    code = (
+        "import runpy, sys\n"
+        f"try:\n    runpy.run_path({str(path)!r}, run_name='x')\n"
+        "except ImportError:\n    pass\n"
+        "else:\n    raise SystemExit('import should have failed')\n"
+        "assert not any(n == 'archmap' or n.startswith('archmap.') for n in sys.modules), 'modules left'\n"
+        "assert not any(getattr(f, '_archmap_bundle', False) for f in sys.meta_path), 'finder left'\n"
+        "print('ok')\n"
+    )
+    res = _isolated(code, tmp_path, code=True)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert res.stdout.strip() == "ok"
