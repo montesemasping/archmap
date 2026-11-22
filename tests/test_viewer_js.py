@@ -104,14 +104,31 @@ def test_viewer_survives_malformed_map(am, tmp_path):
 
 def test_viewer_survives_odd_shapes(am, tmp_path):
     data = {"meta": 3, "nodes": {"a": 1}, "flows": [{"steps": [None, 1, {"path": 3}]}, {"steps": "x"}],
-            "sections": {"s": None, "t": {"body": {"k": [None, {"z": 1}]}}}}
-    run_viewer(tmp_path, am, data)
+            "sections": {"s": None, "t": {"body": {"k": [None, {"z": 1}]}}},
+            "gotchas": [[1, 2], {"k": "v"}, None, 7]}
+    out = run_viewer(tmp_path, am, data)
+    assert out["failures"] == [] and out["edges"] == 2
+
+
+def test_viewer_survives_prototype_names(am, tmp_path):
+    names = ["constructor", "__proto__", "toString", "hasOwnProperty"]
+    data = {
+        "meta": {"layers": [{"id": n, "title": n} for n in names]},
+        "nodes": [{"id": n, "label": n, "layer": n, "summary": n, "files": [n]} for n in names],
+        "edges": [{"from": a, "to": b, "label": a} for a in names for b in names],
+        "flows": [{"id": "constructor", "title": "t", "steps": [{"node": n, "note": n} for n in names]},
+                  {"id": "constructor", "title": "dup", "steps": []}],
+    }
+    data["nodes"].append({"id": "extra", "layer": "valueOf"})
+    out = run_viewer(tmp_path, am, data)
+    assert out["failures"] == [] and out["nodes"] == 5 and out["edges"] == 2 + 16
+    assert out["badges"] == ["1", "2", "3", "4"]
 
 
 def test_viewer_links_files_and_steps(am, tmp_path):
     data = json.loads(FIXTURE_MAP.read_text(encoding="utf-8"))
     out = run_viewer(tmp_path, am, data)
-    assert out["failures"] == [] and out["nodes"] == 4 and out["badges"] == ["1", "2", "3"]
+    assert out["failures"] == [] and out["nodes"] == 4 and out["edges"] == 2 + 4 and out["badges"] == ["1", "2", "3"]
     hrefs = [a["href"] for a in out["anchors"]]
     assert "https://example.com/bakery/blob/main/app/orders/api.py#L6" in hrefs
     assert "https://example.com/bakery/blob/main/app/orders/api.py" in hrefs

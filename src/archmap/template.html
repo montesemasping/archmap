@@ -8,14 +8,14 @@
 :root {
   --bg: #f6f5f1; --bg2: #ecebe5; --panel: #ffffff; --line: #d5d3c9; --text: #1d2321; --dim: #5a625f;
   --accent: #b4600a; --accent-soft: rgba(180, 96, 10, .14); --edge: #9aa19d; --edge-hl: #1f6fa3;
-  --flow: #b4600a; --warn: #b3261e; --warn-bg: #fdeceb; --shadow: 0 4px 16px rgba(20, 30, 25, .12);
+  --flow: #b4600a; --on-flow: #ffffff; --warn: #b3261e; --warn-bg: #fdeceb; --shadow: 0 4px 16px rgba(20, 30, 25, .12);
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 html[data-theme="dark"] {
   --bg: #12171a; --bg2: #181f23; --panel: #1d262b; --line: #2e3a41; --text: #e4ebe8; --dim: #96a39e;
   --accent: #f0a030; --accent-soft: rgba(240, 160, 48, .16); --edge: #5b6a71; --edge-hl: #6ec1e4;
-  --flow: #f0a030; --warn: #ff9b92; --warn-bg: #3a1c1b; --shadow: 0 4px 18px rgba(0, 0, 0, .5);
+  --flow: #f0a030; --on-flow: #12171a; --warn: #ff9b92; --warn-bg: #3a1c1b; --shadow: 0 4px 18px rgba(0, 0, 0, .5);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -40,7 +40,7 @@ header h1 { font-size: 17px; margin: 0; }
 #layers button { border-left-width: 4px; font-size: 12.5px; padding: 2px 8px; }
 #layers button[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
 main { flex: 1; min-height: 0; display: flex; }
-#viewport { flex: 1; min-width: 0; position: relative; overflow: hidden; cursor: grab; touch-action: none; }
+#viewport { flex: 1; min-width: 0; position: relative; overflow: hidden; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 #viewport.panning { cursor: grabbing; }
 #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; padding: 24px; display: inline-block; }
 #edges { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; overflow: visible; }
@@ -52,7 +52,7 @@ main { flex: 1; min-height: 0; display: flex; }
 .node:hover { border-color: var(--accent); }
 .node .nl { font-weight: 600; display: block; padding-right: 22px; }
 .node .ns { color: var(--dim); font-size: 12px; display: block; margin-top: 2px; }
-.node .sn { position: absolute; top: -9px; right: -7px; background: var(--flow); color: #fff; border-radius: 10px; min-width: 20px; padding: 0 5px; font: 700 12px/20px var(--sans); text-align: center; }
+.node .sn { position: absolute; top: -9px; right: -7px; background: var(--flow); color: var(--on-flow); border-radius: 10px; min-width: 20px; padding: 0 5px; font: 700 12px/20px var(--sans); text-align: center; }
 .node .sn:empty { display: none; }
 .node.dim { opacity: .22; }
 .node.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
@@ -84,7 +84,7 @@ aside span, aside p { white-space: pre-wrap; overflow-wrap: anywhere; }
 aside summary { cursor: pointer; font-weight: 600; }
 .link-btn { border: 0; background: none; padding: 0; color: var(--edge-hl); text-align: left; }
 .link-btn:hover { text-decoration: underline; }
-.stepn { display: inline-block; background: var(--flow); color: #fff; border-radius: 9px; min-width: 18px; text-align: center; font-size: 11px; font-weight: 700; margin-right: 4px; }
+.stepn { display: inline-block; background: var(--flow); color: var(--on-flow); border-radius: 9px; min-width: 18px; text-align: center; font-size: 11px; font-weight: 700; margin-right: 4px; }
 @media (max-width: 760px) {
   main { flex-direction: column; }
   aside { width: auto; max-width: none; height: 42%; border-left: 0; border-top: 1px solid var(--line); }
@@ -136,6 +136,10 @@ aside summary { cursor: pointer; font-weight: 600; }
   }
   function clear(n) { n.textContent = ""; }
   function cls(n, name, on) { if (n.classList) { n.classList.toggle(name, !!on); } }
+  function fail(name) {
+    var host = document.getElementById("panels");
+    if (host) { host.appendChild(el("p", "Could not render " + name + ".", "meta")); }
+  }
   function guarded(parent, name, fn) {
     try { fn(); } catch (err) { parent.appendChild(el("p", "Could not render " + name + ".", "meta")); }
   }
@@ -207,7 +211,13 @@ aside summary { cursor: pointer; font-weight: 600; }
   // ---- model -------------------------------------------------------------
   var PALETTE = ["#3b8ed0", "#2f9e6b", "#b4600a", "#8e5bc4", "#c44f68", "#a8851c", "#1f9aa3", "#7a8a35"];
   var nodes = [];
-  var byId = {};
+  var byId = Object.create(null);
+  var layers = [];
+  var layerById = Object.create(null);
+  var edges = [];
+  var edgesOf = Object.create(null);
+  var flows = [];
+  try {
   arr(map.nodes).forEach(function (n) {
     if (!isObj(n) || !text(n.id) || byId[text(n.id)]) { return; }
     var rec = { id: text(n.id), data: n, label: text(n.label) || text(n.id), layer: text(n.layer) || "(no layer)" };
@@ -217,8 +227,6 @@ aside summary { cursor: pointer; font-weight: 600; }
     byId[rec.id] = rec;
   });
 
-  var layers = [];
-  var layerById = {};
   function addLayer(id, titleText, hint) {
     if (layerById[id]) { return; }
     var rec = { id: id, title: titleText || id, hint: hint || "", color: PALETTE[layers.length % PALETTE.length], visible: true, col: null };
@@ -230,8 +238,6 @@ aside summary { cursor: pointer; font-weight: 600; }
   });
   nodes.forEach(function (n) { addLayer(n.layer, n.layer, ""); });
 
-  var edges = [];
-  var edgesOf = {};
   arr(map.edges).forEach(function (e) {
     if (!isObj(e)) { return; }
     var from = text(e.from), to = text(e.to);
@@ -242,14 +248,14 @@ aside summary { cursor: pointer; font-weight: 600; }
     if (to !== from) { (edgesOf[to] = edgesOf[to] || []).push(rec); }
   });
 
-  var flows = [];
   arr(map.flows).forEach(function (f) {
     if (!isObj(f)) { return; }
-    flows.push({ id: text(f.id) || ("flow-" + flows.length), data: f, title: text(f.title) || text(f.id) || "Flow", steps: arr(f.steps).filter(isObj) });
+    flows.push({ idx: flows.length, data: f, title: text(f.title) || text(f.id) || "Flow", steps: arr(f.steps).filter(isObj) });
   });
+  } catch (err) { fail("model"); }
 
   // ---- state -------------------------------------------------------------
-  var state = { sel: null, query: "", flow: null };
+  var state = { sel: null, query: "", flow: null }; // flow: index into flows
   var view = { tx: 0, ty: 0, sc: 1 };
   var dragged = false;
   var world = $("world"), viewport = $("viewport"), edgesSvg = $("edges"), cols = $("cols");
@@ -296,6 +302,10 @@ aside summary { cursor: pointer; font-weight: 600; }
       b.addEventListener("keydown", function (ev) {
         if (ev.key === "Enter" || ev.key === " ") { if (ev.preventDefault) { ev.preventDefault(); } select(n.id, false); }
       });
+      b.addEventListener("focus", function () {
+        viewport.scrollLeft = 0; viewport.scrollTop = 0;   // keep the transform in sync
+        centerOn(n.id);
+      });
       n.box = b;
       var l = layerById[n.layer];
       b.style.setProperty("--lc", l.color);
@@ -325,6 +335,10 @@ aside summary { cursor: pointer; font-weight: 600; }
 
   // ---- layout: edges are recomputed only when the layout changes ---------
   function rectOf(n) {
+    if (n.r) { return n.r; }
+    return readRect(n);
+  }
+  function readRect(n) {
     var b = n.box;
     return { x: b.offsetLeft || 0, y: b.offsetTop || 0, w: b.offsetWidth || 0, h: b.offsetHeight || 0 };
   }
@@ -350,8 +364,10 @@ aside summary { cursor: pointer; font-weight: 600; }
     requestAnimationFrame(function () { layoutQueued = false; layout(); });
   }
   function layout() {
-    edgesSvg.setAttribute("width", world.offsetWidth || 0);
-    edgesSvg.setAttribute("height", world.offsetHeight || 0);
+    var ww = world.offsetWidth || 0, wh = world.offsetHeight || 0;
+    nodes.forEach(function (n) { n.r = readRect(n); });   // all reads first
+    edgesSvg.setAttribute("width", ww);
+    edgesSvg.setAttribute("height", wh);
     edges.forEach(function (e) {
       var a = byId[e.from], b = byId[e.to];
       var ok = a !== b && visible(a) && visible(b);
@@ -380,29 +396,31 @@ aside summary { cursor: pointer; font-weight: 600; }
 
   // ---- state -> classes --------------------------------------------------
   function currentFlow() {
-    for (var i = 0; i < flows.length; i++) { if (flows[i].id === state.flow) { return flows[i]; } }
-    return null;
+    return state.flow === null ? null : (flows[state.flow] || null);
   }
   function neighbours(id) {
-    var set = {};
+    var set = Object.create(null);
     (edgesOf[id] || []).forEach(function (e) { set[e.from] = true; set[e.to] = true; });
     set[id] = true;
     return set;
   }
-  function refresh() {
+  function refresh(skipOverlay) {
+    try { refreshInner(skipOverlay); } catch (err) { fail("view"); }
+  }
+  function refreshInner(skipOverlay) {
     var q = lc(state.query).trim();
     var flow = currentFlow();
     var focus = null, matches = 0, kind = "";
     if (q) {
-      kind = "q"; focus = {};
+      kind = "q"; focus = Object.create(null);
       nodes.forEach(function (n) { if (visible(n) && n.hay.indexOf(q) !== -1) { focus[n.id] = true; matches++; } });
     } else if (state.sel) {
       kind = "sel"; focus = neighbours(state.sel);
     } else if (flow) {
-      kind = "flow"; focus = {};
+      kind = "flow"; focus = Object.create(null);
       flow.steps.forEach(function (s) { focus[text(s.node)] = true; });
     }
-    var nums = {};
+    var nums = Object.create(null);
     if (flow) {
       flow.steps.forEach(function (s, i) { var id = text(s.node); (nums[id] = nums[id] || []).push(i + 1); });
     }
@@ -416,7 +434,7 @@ aside summary { cursor: pointer; font-weight: 600; }
       n.snum.textContent = nums[n.id] ? nums[n.id].join(",") : "";
       n.box.setAttribute("aria-pressed", state.sel === n.id ? "true" : "false");
     });
-    var flowEdge = {};
+    var flowEdge = Object.create(null);
     var ids = flowNodeIds();
     for (var i = 0; i + 1 < ids.length; i++) { flowEdge[ids[i] + ">" + ids[i + 1]] = true; flowEdge[ids[i + 1] + ">" + ids[i]] = true; }
     edges.forEach(function (e) {
@@ -431,26 +449,32 @@ aside summary { cursor: pointer; font-weight: 600; }
       e.path.setAttribute("marker-end", hl ? "url(#m-arrow-hl)" : "url(#m-arrow)");
     });
     $("count").textContent = q ? matches + " match" + (matches === 1 ? "" : "es") : "";
-    drawOverlay();
+    if (!skipOverlay) { drawOverlay(); }
     renderCard();
     renderFlowInfo();
   }
 
   function select(id, center) {
-    state.sel = id;
-    refresh();
-    if (id && center) { centerOn(id); }
+    try {
+      state.sel = id;
+      refresh();
+      if (id && center) { centerOn(id); }
+    } catch (err) { fail("selection"); }
   }
   function reset() {
-    state.sel = null; state.query = ""; state.flow = null;
-    $("search").value = "";
-    $("flow").value = "";
-    refresh();
+    try {
+      state.sel = null; state.query = ""; state.flow = null;
+      $("search").value = "";
+      $("flow").value = "";
+      refresh();
+    } catch (err) { fail("reset"); }
   }
-  function setFlow(id) {
-    state.flow = id || null;
-    $("flow").value = id || "";
-    refresh();
+  function setFlow(idx) {
+    try {
+      state.flow = typeof idx === "number" ? idx : null;
+      $("flow").value = state.flow === null ? "" : String(state.flow);
+      refresh();
+    } catch (err) { fail("flow"); }
   }
 
   // ---- side panel: node card ---------------------------------------------
@@ -509,7 +533,7 @@ aside summary { cursor: pointer; font-weight: 600; }
         inFlows.forEach(function (f) {
           var li = el("li"), b = el("button", f.title, "link-btn");
           b.setAttribute("type", "button");
-          b.addEventListener("click", function () { setFlow(f.id); });
+          b.addEventListener("click", function () { setFlow(f.idx); });
           li.appendChild(b); fl.appendChild(li);
         });
         wrap.appendChild(fl);
@@ -578,8 +602,10 @@ aside summary { cursor: pointer; font-weight: 600; }
       if (typeof it === "string" || typeof it === "number") { li = el("li"); li.appendChild(el("span", it)); }
       else if (isObj(it)) {
         var key = textKeys.filter(function (k) { return text(it[k]); })[0] || textKeys[0];
-        li = pathLine(it, "li", key);
-      } else { return; }
+        if (text(it[key])) { li = pathLine(it, "li", key); }
+        else { li = el("li"); renderValue(it, li, 0); }
+      } else if (it !== null && it !== undefined) { li = el("li"); renderValue(it, li, 0); }
+      else { return; }
       list.appendChild(li); count++;
     });
     if (!count) { return false; }
@@ -621,11 +647,11 @@ aside summary { cursor: pointer; font-weight: 600; }
     sel.appendChild(none);
     flows.forEach(function (f) {
       var o = el("option", f.title);
-      o.setAttribute("value", f.id);
+      o.setAttribute("value", String(f.idx));
       sel.appendChild(o);
     });
     sel.disabled = !flows.length;
-    sel.addEventListener("change", function () { setFlow(sel.value); });
+    sel.addEventListener("change", function () { setFlow(sel.value === "" ? null : parseInt(sel.value, 10)); });
 
     $("search").addEventListener("input", function () { state.query = $("search").value; refresh(); });
 
@@ -640,8 +666,8 @@ aside summary { cursor: pointer; font-weight: 600; }
         b.setAttribute("aria-pressed", l.visible ? "true" : "false");
         l.col.style.display = l.visible ? "" : "none";
         if (state.sel && !visible(byId[state.sel])) { state.sel = null; }
-        refresh();
-        layout();
+        refresh(true);
+        scheduleLayout();
       });
       lbox.appendChild(b);
     });
@@ -690,7 +716,7 @@ aside summary { cursor: pointer; font-weight: 600; }
   function centerOn(id) {
     var n = byId[id];
     if (!n || !viewW()) { return; }
-    var r = rectOf(n);
+    var r = n.r || readRect(n);
     var x = view.tx + r.x * view.sc, y = view.ty + r.y * view.sc;
     if (x < 0 || y < 0 || x + r.w * view.sc > viewW() || y + r.h * view.sc > viewH()) {
       view.tx = viewW() / 2 - (r.x + r.w / 2) * view.sc;
@@ -700,6 +726,9 @@ aside summary { cursor: pointer; font-weight: 600; }
   }
   function setupPanZoom() {
     var start = null;
+    ["click", "pointerdown", "wheel"].forEach(function (t) {
+      $("zoom").addEventListener(t, function (ev) { if (ev.stopPropagation) { ev.stopPropagation(); } });
+    });
     viewport.addEventListener("pointerdown", function (ev) {
       if (ev.button !== undefined && ev.button !== 0) { return; }
       start = { x: ev.clientX, y: ev.clientY, tx: view.tx, ty: view.ty };
