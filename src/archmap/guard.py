@@ -14,6 +14,20 @@ from .paths import count_lines, exists_exact, expand_glob, is_glob, validate_rel
 from .problems import Problem
 
 
+GUARD_CODES: frozenset = frozenset({
+    "schema-missing", "schema-unknown", "section-missing", "field-missing", "field-invalid",
+    "field-unknown", "id-duplicate", "layer-undeclared", "path-invalid", "path-missing",
+    "glob-empty", "line-invalid", "edge-dangling", "edge-self", "node-orphan",
+    "step-node-missing", "flow-too-short",
+})
+
+
+def _problem(code: str, where: str, message: str) -> Problem:
+    if code not in GUARD_CODES:  # a programming error, never caused by map content
+        raise AssertionError(f"unregistered guard code {code!r}")
+    return Problem(code, where or "$", message)
+
+
 def _join(where: str, key: str) -> str:
     return f"{where}.{key}" if where else key
 
@@ -41,7 +55,7 @@ class _Guard:
         self.problems: list[Problem] = []
 
     def add(self, code: str, where: str, message: str) -> None:
-        self.problems.append(Problem(code, where or "$", message))
+        self.problems.append(_problem(code, where, message))
 
     # ---- generic object checks -------------------------------------------------
 
@@ -311,10 +325,10 @@ class _Guard:
 def check_map(data: Any, root: "str | os.PathLike") -> list[Problem]:
     """All problems found in the map `data`, sorted by (where, code). Never raises."""
     if not isinstance(data, dict) or "$schema" not in data:
-        return [Problem("schema-missing", "$", "map must be a JSON object with a '$schema' field")]
+        return [_problem("schema-missing", "$", "map must be a JSON object with a '$schema' field")]
     if data["$schema"] != schema.SCHEMA_ID:
         return [
-            Problem(
+            _problem(
                 "schema-unknown",
                 "$schema",
                 f"unsupported schema {data['$schema']!r}, expected {schema.SCHEMA_ID!r}",

@@ -120,3 +120,18 @@ def test_check_map_never_raises_on_removed_values(am):
         else:
             cur.pop(target[-1])
         assert isinstance(am.check_map(data, FIXTURE), list), target
+
+
+def test_unregistered_code_is_a_programming_error(am):
+    guard = am.guard._Guard(FIXTURE)
+    with pytest.raises(AssertionError):
+        guard.add("foo-bar", "x", "nope")
+
+
+def test_every_code_literal_in_guard_source_is_registered(am):
+    import re
+
+    src = (Path(__file__).parent.parent / "src" / "archmap" / "guard.py").read_text(encoding="utf-8")
+    literals = set(re.findall(r'(?:\.add|_problem)\(\s*"([a-z-]+)"', src))
+    assert literals, "scan found no code literals"
+    assert literals <= set(am.guard.GUARD_CODES)

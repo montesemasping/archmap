@@ -8,15 +8,6 @@ import pytest
 FIXTURE = Path(__file__).parent / "fixtures" / "bakery"
 MAP_REL = "docs/architecture-map.json"
 
-# The codes implemented so far. The next PR extends this with coverage-* and secret-*.
-CODES = {
-    "schema-missing", "schema-unknown", "section-missing", "field-missing", "field-invalid",
-    "field-unknown", "id-duplicate", "layer-undeclared", "path-invalid", "path-missing",
-    "glob-empty", "line-invalid", "edge-dangling", "edge-self", "node-orphan",
-    "step-node-missing", "flow-too-short",
-}
-
-
 def _step(d):
     return d["flows"][0]["steps"][1]  # has path, line and symbol
 
@@ -179,9 +170,9 @@ def test_tree_mutation_is_caught(am, tmp_path, name, mutate, code):
     assert code in {p.code for p in problems}, [str(p) for p in problems]
 
 
-def test_every_code_has_a_mutation():
+def test_every_code_has_a_mutation(am):
     covered = {m[2] for m in MAP_MUTATIONS} | {m[2] for m in TREE_MUTATIONS}
-    assert covered == CODES
+    assert covered == set(am.guard.GUARD_CODES)
 
 
 def test_guard_emits_no_codes_outside_the_list(am, tmp_path):
@@ -191,4 +182,4 @@ def test_guard_emits_no_codes_outside_the_list(am, tmp_path):
         data = _read(root)
         mutate(data)
         emitted |= {p.code for p in am.check_map(data, root)}
-    assert emitted <= CODES
+    assert emitted <= set(am.guard.GUARD_CODES)
