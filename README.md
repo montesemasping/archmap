@@ -10,8 +10,8 @@ code, and builds an offline, single-file HTML viewer of it.
 
 A project vendors a single file and needs nothing else (no pip, no dependencies).
 
-1. Get `dist/archmap.py`: download the `archmap-single-file` artifact from a CI run,
-   or build it locally with `python tools/build_single.py`.
+1. Get `dist/archmap.py`: the repository's CI produces it as the `archmap-single-file`
+   artifact once it runs, or build it locally with `python tools/build_single.py`.
 2. Copy it to `tools/archmap/archmap.py` in your project and commit it.
 
 The file is generated. Do not edit it; replace it with a newer build to upgrade.
@@ -22,7 +22,12 @@ The file is generated. Do not edit it; replace it with a newer build to upgrade.
 python tools/archmap/archmap.py check
 ```
 
-It exits 0 when the map is clean and 1 when the guard reports problems.
+Exit codes:
+
+- `0`: the map is clean.
+- `1`: the guard reported problems.
+- `2`: the map file is missing or is not valid JSON, the `--root` is not a directory, or an
+  internal error occurred (printed as `archmap: internal error: <type>: <message>`).
 
 ### Locally
 
@@ -31,7 +36,11 @@ python tools/archmap/archmap.py build
 ```
 
 The viewer is written to `runtime/html-artifacts/architecture-map.html`
-(override with `-o OUT`). `build` runs `check` first.
+(override with `-o OUT`). `build` runs `check` first and uses the same exit codes. It
+still writes the viewer when the guard reports problems, so you can read them there, with
+two exceptions: it writes nothing for a map that is not `archmap/1`, and it refuses to
+write HTML (exit 1) when any problem is `secret-suspect`, so a suspected secret is never
+embedded in a page.
 
 ## Commands
 
@@ -70,16 +79,28 @@ Content:
 
 - `nodes[]`: `id`, `label`, `layer`, `summary` required; `kind`, `files`, `details`,
   `api`, `status`, `tech` optional. `files` may hold exact paths, directories (`dir/`)
-  and globs.
+  and globs. A single entry may not cover the whole tree: `*`, `**` and anything whose
+  first segment is `**` (`**/*.py`) are rejected as `path-invalid`.
 - `edges[]`: `from`, `to` required; `label`, `kind` optional.
 - `flows[]`: `id`, `title`, `steps` required (at least 2); each step needs `node` and
   `note`, and may carry `path`, `line`, `symbol`.
-- `reading_order[]`, `gotchas[]`, `unknowns[]`, `sections{}`: free-form guidance shown
-  in the viewer.
+- `reading_order[]`, `gotchas[]`, `unknowns[]`, `sections{}`: guidance shown in the
+  viewer. A `path` in `reading_order`, `gotchas` or `unknowns` must exist (exact path or
+  directory, no glob). A section needs a `title` and exactly one of `body` or `items`.
+
+Paths and globs:
+
+- Paths use `/`, are relative to the root, and are case-sensitive. A path or glob has at most
+  128 segments.
+- Globs support only `*` (any run of characters inside one segment), `?` (one character)
+  and `**` (a whole segment, any number of directories). `[]` and `{}` are literal
+  characters, not classes or alternatives.
+- Globs are allowed only in `nodes[].files`, in `meta.coverage.core` and in
+  `meta.coverage.ignored[].glob`. Everywhere else a path must be exact.
 
 ## Guard rules
 
-`check` reports one line per problem, `code  where  message`. The codes:
+`check` reports one line per problem, in the form `where: message [code]`. The codes:
 
 | Group | Codes |
 |---|---|
@@ -88,6 +109,18 @@ Content:
 | Paths | `path-invalid`, `path-missing`, `glob-empty`, `line-invalid` |
 | Coverage | `coverage-core-empty`, `coverage-core-glob-empty`, `coverage-uncovered`, `coverage-ignore-no-why`, `coverage-ignore-unused` |
 | Secrets | `secret-suspect`, `secret-allow-no-why`, `secret-allow-unused` |
+
+Coverage and secrets, in detail:
+
+- If the `ignored` entries together remove every core file, the guard reports
+  `coverage-core-empty` ("ignored entries remove every core file"): the map would then
+  guard nothing.
+- Secret detection scans every string value (keys are not scanned). `secret_allow[].match`
+  values are exempt, but the `why` of an entry is scanned like any other text.
+- A suspect id or key is never echoed in full: `where` falls back to the index
+  (`nodes[0]`), and a suspect key in a message is cut to its first 4 characters
+  (`'AKIA…'`).
+- JSON nested deeper than 200 levels is reported as `json-invalid`.
 
 ## Development
 

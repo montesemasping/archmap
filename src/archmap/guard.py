@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from . import schema
-from .paths import count_lines, covers, exists_exact, expand_glob, is_glob, validate_rel_path
+from .paths import binary_reason, count_lines, covers, too_broad, exists_exact, expand_glob, is_glob, validate_rel_path
 from .problems import Problem
 from .secrets import find_secrets
-from .where import GUARD_CODES, _SAFE_ID, _ident, _join, _problem, _seg  # noqa: F401
+from .where import GUARD_CODES, _SAFE_ID, _ident, _join, _problem, _quote, _seg  # noqa: F401
 
 
 def _blank(value: Any) -> bool:
@@ -41,7 +41,7 @@ class _Guard:
             return False
         for key in obj:
             if key not in known:
-                self.add("field-unknown", _join(where, _seg(key)), f"unknown field {key!r}")
+                self.add("field-unknown", _join(where, _seg(key)), f"unknown field {_quote(key)}")
         for key, kind in known.items():
             if key not in obj:
                 continue
@@ -113,7 +113,8 @@ class _Guard:
             self.add("line-invalid", here, f"cannot read {path!r}: {exc}")
             return
         if total is None:
-            self.add("line-invalid", here, f"{path!r} is a binary file, a line number makes no sense")
+            reason = binary_reason(self.root.joinpath(*path.split("/"))) or "binary"
+            self.add("line-invalid", here, f"{path!r} is {reason}, a line number makes no sense")
         elif line > total:
             self.add("line-invalid", here, f"line {line} is beyond the end of {path!r} ({total} lines)")
 
@@ -146,7 +147,7 @@ class _Guard:
                     lid = layer.get("id")
                     if not _blank(lid):
                         if lid in first_layer:
-                            self.add("id-duplicate", f"{here}.id", f"duplicate layer id {lid!r} (first at meta.layers[{first_layer[lid]}])")
+                            self.add("id-duplicate", f"{here}.id", f"duplicate layer id {_quote(lid)} (first at meta.layers[{first_layer[lid]}])")
                         else:
                             first_layer[lid] = i
                         layer_ids.add(lid)
@@ -189,18 +190,21 @@ class _Guard:
             nid = node.get("id")
             if isinstance(nid, str) and nid.strip():
                 if nid in seen:
-                    self.add("id-duplicate", f"{where}.id", f"duplicate node id {nid!r} (first at nodes[{seen[nid]}])")
+                    self.add("id-duplicate", f"{where}.id", f"duplicate node id {_quote(nid)} (first at nodes[{seen[nid]}])")
                 else:
                     seen[nid] = i
                 ids.add(nid)
             layer = node.get("layer")
             if layer_ids is not None and isinstance(layer, str) and layer.strip() and layer not in layer_ids:
-                self.add("layer-undeclared", f"{where}.layer", f"layer {layer!r} is not declared in meta.layers")
+                self.add("layer-undeclared", f"{where}.layer", f"layer {_quote(layer)} is not declared in meta.layers")
             files = node.get("files")
             if isinstance(files, list):
                 for j, entry in enumerate(files):
                     here = f"{where}.files[{j}]"
                     if isinstance(entry, str):
+                        if validate_rel_path(entry) is None and too_broad(entry):
+                            self.add("path-invalid", here, f"{entry!r}: too broad: a single entry may not cover the whole tree")
+                            continue
                         self.check_path(entry, here, allow_glob=True)
                     else:
                         self.add("field-invalid", here, "expected a string")
@@ -224,9 +228,9 @@ class _Guard:
                     ends[key] = value
                     linked.add(value)
                     if node_ids is not None and value not in node_ids:
-                        self.add("edge-dangling", f"{where}.{key}", f"unknown node {value!r}")
+                        self.add("edge-dangling", f"{where}.{key}", f"unknown node {_quote(value)}")
             if len(ends) == 2 and ends["from"] == ends["to"]:
-                self.add("edge-self", where, f"edge connects node {ends['from']!r} to itself")
+                self.add("edge-self", where, f"edge connects node {_quote(ends['from'])} to itself")
         return linked
 
     def flows(self, flows: Any, node_ids: Optional[set]) -> None:
@@ -242,7 +246,7 @@ class _Guard:
             fid = flow.get("id")
             if isinstance(fid, str) and fid.strip():
                 if fid in seen:
-                    self.add("id-duplicate", f"{where}.id", f"duplicate flow id {fid!r} (first at flows[{seen[fid]}])")
+                    self.add("id-duplicate", f"{where}.id", f"duplicate flow id {_quote(fid)} (first at flows[{seen[fid]}])")
                 else:
                     seen[fid] = i
             self.str_items(flow.get("tags"), f"{where}.tags")
@@ -257,7 +261,7 @@ class _Guard:
                     continue
                 target = step.get("node")
                 if node_ids is not None and isinstance(target, str) and target.strip() and target not in node_ids:
-                    self.add("step-node-missing", f"{here}.node", f"unknown node {target!r}")
+                    self.add("step-node-missing", f"{here}.node", f"unknown node {_quote(target)}")
                 kind = None
                 if "path" in step:
                     kind = self.check_path(step["path"], f"{here}.path", allow_glob=False)
@@ -341,12 +345,14 @@ class _Guard:
             if not hits:
                 self.add("coverage-ignore-unused", where, f"ignored entry {glob!r} matches no core file")
             skipped |= hits
+        if files and not files - skipped:
+            self.add("coverage-core-empty", "meta.coverage.ignored", "ignored entries remove every core file")
         entries = []
         nodes = data.get("nodes")
         for node in nodes if isinstance(nodes, list) else []:
             listed = node.get("files") if isinstance(node, dict) else None
             for entry in listed if isinstance(listed, list) else []:
-                if isinstance(entry, str) and validate_rel_path(entry) is None:
+                if isinstance(entry, str) and validate_rel_path(entry) is None and not too_broad(entry):
                     entries.append(entry)
         for rel in sorted(files - skipped):
             if not any(covers(entry, rel, self.root) for entry in entries):
@@ -360,7 +366,7 @@ class _Guard:
                 self.add("section-missing", "$", f"missing required section '{key}'")
         for key in data:
             if key not in schema.TOP_FIELDS:
-                self.add("field-unknown", _seg(key), f"unknown top-level field {key!r}")
+                self.add("field-unknown", _seg(key), f"unknown top-level field {_quote(key)}")
         for key, kind in schema.TOP_FIELDS.items():
             if key in data and key != "$schema" and not isinstance(data[key], _TYPES[kind]):
                 self.add("field-invalid", key, f"expected {_TYPE_NAMES[kind]}")
@@ -373,7 +379,7 @@ class _Guard:
                 nid = node.get("id") if isinstance(node, dict) else None
                 if isinstance(nid, str) and nid.strip() and nid not in linked and nid not in reported:
                     reported.add(nid)
-                    self.add("node-orphan", f"nodes[{_ident(node, i)}]", f"node {nid!r} has no edges")
+                    self.add("node-orphan", f"nodes[{_ident(node, i)}]", f"node {_quote(nid)} has no edges")
         self.flows(data.get("flows"), node_ids)
         self.check_optional_path_items(
             data.get("reading_order"), "reading_order", schema.READING_FIELDS, schema.READING_REQUIRED
