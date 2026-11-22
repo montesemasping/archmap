@@ -18,70 +18,141 @@
 <div id="problems" hidden></div>
 <h2>Nodes</h2>
 <ul id="nodes"></ul>
+<h2>Flows</h2>
+<div id="flows"></div>
 <div id="sections"></div>
 <script id="archmap-data" type="application/json">/*__ARCHMAP_DATA__*/</script>
 <script>
 (function () {
   "use strict";
   var payload = JSON.parse(document.getElementById("archmap-data").textContent);
-  var map = payload.map || {};
-  var meta = map.meta || {};
 
-  function el(tag, text, className) {
+  function isObj(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
+  function arr(v) { return Array.isArray(v) ? v : []; }
+  function text(v) { return typeof v === "string" || typeof v === "number" ? String(v) : ""; }
+
+  function el(tag, content, className) {
     var node = document.createElement(tag);
-    if (text !== undefined && text !== null) { node.textContent = String(text); }
+    if (content !== undefined && content !== null && content !== "") { node.textContent = String(content); }
     if (className) { node.className = className; }
     return node;
   }
 
-  function renderValue(value, parent) {
+  // Run one rendering step; a failure shows a note instead of blanking the page.
+  function guarded(parent, name, fn) {
+    try { fn(); } catch (err) {
+      parent.appendChild(el("p", "Could not render " + name + ".", "meta"));
+    }
+  }
+
+  var links = isObj(payload && payload.links) ? payload.links : {};
+
+  function linkFor(keys) {
+    for (var i = 0; i < keys.length; i++) {
+      var url = links[keys[i]];
+      if (typeof url === "string" && /^https?:\/\//.test(url)) { return url; }
+    }
+    return null;
+  }
+
+  // A path as a link when the page has a safe URL for it, as plain text otherwise.
+  function pathNode(path, keys) {
+    var url = linkFor(keys);
+    if (!url) { return el("code", path); }
+    var a = el("a", path);
+    a.href = url;
+    a.setAttribute("rel", "noopener noreferrer");
+    a.setAttribute("target", "_blank");
+    return a;
+  }
+
+  function renderValue(value, parent, depth) {
+    if (depth > 50) { parent.appendChild(el("span", "...")); return; }
     if (Array.isArray(value)) {
       var list = el("ul");
       value.forEach(function (item) {
         var li = el("li");
-        renderValue(item, li);
+        renderValue(item, li, depth + 1);
         list.appendChild(li);
       });
       parent.appendChild(list);
-    } else if (value !== null && typeof value === "object") {
+    } else if (isObj(value)) {
       var dl = el("dl");
       Object.keys(value).forEach(function (key) {
         dl.appendChild(el("dt", key));
         var dd = el("dd");
-        renderValue(value[key], dd);
+        renderValue(value[key], dd, depth + 1);
         dl.appendChild(dd);
       });
       parent.appendChild(dl);
-    } else {
+    } else if (value !== null && value !== undefined) {
       parent.appendChild(el("span", value));
     }
   }
 
-  document.title = (meta.title || "Architecture map");
-  document.getElementById("title").textContent = meta.title || "Architecture map";
+  var map = isObj(payload && payload.map) ? payload.map : {};
+  var meta = isObj(map.meta) ? map.meta : {};
+  var title = text(meta.title) || "Architecture map";
+  document.title = title;
+  document.getElementById("title").textContent = title;
 
-  var problems = payload.problems || [];
-  if (problems.length) {
-    var box = document.getElementById("problems");
+  var box = document.getElementById("problems");
+  guarded(box, "problems", function () {
+    var problems = arr(payload && payload.problems);
+    if (!problems.length) { return; }
     box.hidden = false;
     box.appendChild(el("strong", problems.length + " problem(s) found by archmap check"));
-    problems.forEach(function (line) { box.appendChild(el("pre", line)); });
-  }
+    problems.forEach(function (line) { box.appendChild(el("pre", text(line))); });
+  });
 
   var nodesList = document.getElementById("nodes");
-  (Array.isArray(map.nodes) ? map.nodes : []).forEach(function (node) {
-    var li = el("li", (node.label || node.id) + " ");
-    li.appendChild(el("span", "(" + (node.layer || "no layer") + ")", "meta"));
-    if (node.summary) { li.appendChild(el("div", node.summary)); }
-    nodesList.appendChild(li);
+  guarded(nodesList, "nodes", function () {
+    arr(map.nodes).forEach(function (node) {
+      if (!isObj(node)) { return; }
+      var li = el("li", (text(node.label) || text(node.id)) + " ");
+      li.appendChild(el("span", "(" + (text(node.layer) || "no layer") + ")", "meta"));
+      if (text(node.summary)) { li.appendChild(el("div", node.summary)); }
+      var files = arr(node.files).filter(function (f) { return typeof f === "string"; });
+      if (files.length) {
+        var ul = el("ul");
+        files.forEach(function (f) {
+          var item = el("li");
+          item.appendChild(pathNode(f, [f]));
+          ul.appendChild(item);
+        });
+        li.appendChild(ul);
+      }
+      nodesList.appendChild(li);
+    });
+  });
+
+  var flowsBox = document.getElementById("flows");
+  guarded(flowsBox, "flows", function () {
+    arr(map.flows).forEach(function (flow) {
+      if (!isObj(flow)) { return; }
+      flowsBox.appendChild(el("h3", text(flow.title) || text(flow.id)));
+      var ol = el("ol");
+      arr(flow.steps).forEach(function (step) {
+        if (!isObj(step)) { return; }
+        var li = el("li", (text(step.node) + " " + text(step.note)).trim() + " ");
+        if (typeof step.path === "string") {
+          var keys = typeof step.line === "number" ? [step.path + "#" + step.line, step.path] : [step.path];
+          li.appendChild(pathNode(step.path + (typeof step.line === "number" ? ":" + step.line : ""), keys));
+        }
+        ol.appendChild(li);
+      });
+      flowsBox.appendChild(ol);
+    });
   });
 
   var sectionsBox = document.getElementById("sections");
-  var sections = map.sections && typeof map.sections === "object" ? map.sections : {};
+  var sections = isObj(map.sections) ? map.sections : {};
   Object.keys(sections).forEach(function (key) {
-    var section = sections[key] || {};
-    sectionsBox.appendChild(el("h2", section.title || key));
-    renderValue(section.body !== undefined ? section.body : section.items, sectionsBox);
+    guarded(sectionsBox, "section", function () {
+      var section = isObj(sections[key]) ? sections[key] : {};
+      sectionsBox.appendChild(el("h2", text(section.title) || key));
+      renderValue(section.body !== undefined ? section.body : section.items, sectionsBox, 0);
+    });
   });
 })();
 </script>

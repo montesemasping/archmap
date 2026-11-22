@@ -76,3 +76,22 @@ def test_build_missing_map_exits_two(run_cli, tmp_path):
 
 def test_build_missing_root_exits_two(run_cli, tmp_path):
     assert run_cli(["build", "--root", str(tmp_path / "nope")]).returncode == 2
+
+
+def test_build_malformed_map_round_trips(run_cli, tmp_path):
+    import re
+
+    proj = copy_project(tmp_path)
+    def mangle(d):
+        d["nodes"] = [None, 5, "x"]
+        d["flows"] = [None]
+        d["sections"] = {"a": 3}
+    edit_map(proj, mangle)
+    res = run_cli(["build", "--root", str(proj)])
+    assert res.returncode == 1
+    text = (proj / DEFAULT_OUT).read_text(encoding="utf-8")
+    raw = re.search(r'<script id="archmap-data" type="application/json">(.*?)</script>', text, re.S).group(1)
+    payload = json.loads(raw)
+    assert payload["map"]["nodes"] == [None, 5, "x"]
+    assert payload["map"]["sections"] == {"a": 3}
+    assert payload["problems"]

@@ -31,7 +31,8 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _cmd_check(args: argparse.Namespace) -> int:
+def _load_and_check(args: argparse.Namespace):
+    """Resolve root and map, load and check it; returns (data, problems) or an exit code."""
     root = Path(args.root)
     if not root.is_dir():
         print(f"archmap: root {args.root!r} is not a directory", file=sys.stderr)
@@ -42,7 +43,14 @@ def _cmd_check(args: argparse.Namespace) -> int:
     except MapLoadError as exc:
         print(exc.problem, file=sys.stderr)
         return 2
-    problems = check_map(data, root)
+    return data, check_map(data, root)
+
+
+def _cmd_check(args: argparse.Namespace) -> int:
+    loaded = _load_and_check(args)
+    if isinstance(loaded, int):
+        return loaded
+    _, problems = loaded
     for problem in problems:
         print(problem)
     print(f"{len(problems)} problem(s)" if problems else "no problems", file=sys.stderr)
@@ -50,23 +58,16 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
-    root = Path(args.root)
-    if not root.is_dir():
-        print(f"archmap: root {args.root!r} is not a directory", file=sys.stderr)
-        return 2
-    map_path = Path(args.map) if args.map else root / DEFAULT_MAP
-    try:
-        data = load_map(map_path)
-    except MapLoadError as exc:
-        print(exc.problem, file=sys.stderr)
-        return 2
-    problems = check_map(data, root)
+    loaded = _load_and_check(args)
+    if isinstance(loaded, int):
+        return loaded
+    data, problems = loaded
     for problem in problems:
         print(problem)
     if any(p.code in UNRENDERABLE for p in problems):
         print("not an archmap/1 map, nothing to render", file=sys.stderr)
         return 1
-    out = Path(args.output) if args.output else root / DEFAULT_OUT
+    out = Path(args.output) if args.output else Path(args.root) / DEFAULT_OUT
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(render_html(data, problems), encoding="utf-8", newline="\n")
