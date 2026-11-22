@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "archmap"
+dynamic = ["version"]
+description = "Guard a project's docs/architecture-map.json and build an offline HTML viewer of it."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+archmap = "archmap.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "archmap.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+archmap = ["template.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
