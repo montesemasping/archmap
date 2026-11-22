@@ -182,3 +182,56 @@ def test_str_problem_escapes_control_characters(am):
     text = str(am.Problem("x", "a\nb", "m\r\u2028z"))
     assert "\n" not in text and "\r" not in text and "\u2028" not in text
     assert "\\u000a" in text
+
+
+def _copy_fixture(tmp_path):
+    import shutil
+
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    return root
+
+
+def test_core_counts_binary_file_without_reading_it(am, tmp_path, monkeypatch):
+    root = _copy_fixture(tmp_path)
+
+    real = am.guard.count_lines
+
+    def guarded(path):
+        assert not str(path).endswith(".png"), "coverage must not open the binary file"
+        return real(path)
+
+    monkeypatch.setattr(am.guard, "count_lines", guarded)
+    assert am.check_map(load_fixture_map(), root) == []
+    data = load_fixture_map()
+    data["nodes"][1]["files"] = ["app/menu/*.py"]
+    problems = am.check_map(data, root)
+    assert [p.code for p in problems] == ["coverage-uncovered"]
+    assert "croissant.png" in problems[0].message
+    assert problems[0].where == "meta.coverage"
+
+
+def test_core_literal_file_and_directory_entries(am, tmp_path):
+    root = _copy_fixture(tmp_path)
+    data = load_fixture_map()
+    data["meta"]["coverage"] = {"core": ["app/orders/api.py", "app/menu"], "ignored": []}
+    data["nodes"][0]["files"] = ["app/orders/api.py"]
+    assert am.check_map(data, root) == []
+    data["meta"]["coverage"]["core"] = ["app/orders/api.py/"]
+    codes = [p.code for p in am.check_map(data, root)]
+    assert "coverage-core-glob-empty" in codes
+
+
+def test_malformed_coverage_is_not_double_reported(am):
+    data = load_fixture_map()
+    data["meta"]["coverage"] = {"core": "app/**"}
+    codes = [p.code for p in am.check_map(data, FIXTURE)]
+    assert codes == ["field-invalid"]
+
+
+def test_uncovered_files_are_listed_deterministically(am, tmp_path):
+    root = _copy_fixture(tmp_path)
+    (root / "web" / "z.js").write_text("//", encoding="utf-8")
+    (root / "web" / "b.js").write_text("//", encoding="utf-8")
+    msgs = [p.message for p in am.check_map(load_fixture_map(), root)]
+    assert msgs == sorted(msgs) and len(msgs) == 2
