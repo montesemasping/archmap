@@ -10,8 +10,8 @@ single-file HTML viewer of it.
 
 ```
 archmap check [path]    # validate the map against the schema and the repository
-archmap render [path]   # build the offline HTML viewer
-archmap version         # print the version
+archmap build [path]    # check, then build the offline HTML viewer
+archmap --version       # print the version
 ```
 
 ## Development
