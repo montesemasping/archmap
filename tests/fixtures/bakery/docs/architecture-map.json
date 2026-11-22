@@ -24,7 +24,7 @@
       "ignored": [{"glob": "web/legacy.js", "why": "Old widget, not part of the storefront"}]
     },
     "secret_allow": [
-      {"match": "password = devpassword", "why": "Sample dev value quoted in a gotcha"}
+      {"match": "password = devpass123", "why": "Sample dev value quoted in a gotcha"}
     ]
   },
   "nodes": [
@@ -97,7 +97,7 @@
   ],
   "gotchas": [
     "Quantities are not validated yet",
-    {"text": "The sample config uses password = devpassword locally", "path": "app/orders/models.py"}
+    {"text": "The sample config uses password = devpass123 locally", "path": "app/orders/models.py"}
   ],
   "unknowns": [
     "Whether orders need an expiry",

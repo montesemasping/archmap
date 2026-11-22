@@ -6,5 +6,6 @@ from .cli import main
 from .guard import check_map
 from .loader import MapLoadError, load_map
 from .problems import Problem
+from .secrets import find_secrets
 
-__all__ = ["__version__", "Problem", "MapLoadError", "load_map", "paths", "guard", "check_map", "main"]
+__all__ = ["__version__", "Problem", "MapLoadError", "load_map", "paths", "guard", "check_map", "find_secrets", "main"]

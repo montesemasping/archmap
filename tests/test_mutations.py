@@ -1,4 +1,6 @@
 """Every guard code has at least one mutation of the clean fixture that triggers it."""
+import base64
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -7,6 +9,7 @@ import pytest
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bakery"
 MAP_REL = "docs/architecture-map.json"
+RANDOM_B64 = base64.urlsafe_b64encode(hashlib.sha256(b"x").digest() * 2).decode()
 
 def _step(d):
     return d["flows"][0]["steps"][1]  # has path, line and symbol
@@ -114,6 +117,27 @@ MAP_MUTATIONS = [
     ("path-missing-entrypoint-file-with-slash", _set(["meta", "entrypoints", 0, "path"], "web/app.js/"), "path-missing"),
     ("path-missing-reading-file-with-slash", _set(["reading_order", 0, "path"], "web/app.js/"), "path-missing"),
     ("path-missing-gotcha-file-with-slash", _set(["gotchas", 1, "path"], "web/app.js/"), "path-missing"),
+    ("coverage-core-empty", _set(["meta", "coverage", "core"], []), "coverage-core-empty"),
+    ("coverage-core-glob-empty", lambda d: d["meta"]["coverage"]["core"].append("nothing/**"), "coverage-core-glob-empty"),
+    ("coverage-core-literal-missing", lambda d: d["meta"]["coverage"]["core"].append("app/gone.py"), "coverage-core-glob-empty"),
+    ("coverage-core-path-invalid", lambda d: d["meta"]["coverage"]["core"].append("../x"), "path-invalid"),
+    ("coverage-uncovered-dropped-from-node", _set(["nodes", 0, "files"], ["app/orders/api.py"]), "coverage-uncovered"),
+    ("coverage-uncovered-binary", _set(["nodes", 1, "files"], ["app/menu/*.py"]), "coverage-uncovered"),
+    ("coverage-ignore-no-why", _delete(["meta", "coverage", "ignored", 0, "why"]), "coverage-ignore-no-why"),
+    ("coverage-ignore-blank-why", _set(["meta", "coverage", "ignored", 0, "why"], "  "), "coverage-ignore-no-why"),
+    ("coverage-ignore-unused", lambda d: d["meta"]["coverage"]["ignored"].append({"glob": "web/none.js", "why": "x"}), "coverage-ignore-unused"),
+    ("coverage-ignore-unused-after-core-change", _set(["meta", "coverage", "core"], ["app/**"]), "coverage-ignore-unused"),
+    ("secret-suspect-connection-string", _set(["gotchas", 0], "Use postgres://u:p@h/db for tests"), "secret-suspect"),
+    ("secret-suspect-assignment", _set(["gotchas", 0], "token = abcdef123456"), "secret-suspect"),
+    ("secret-suspect-hex", _set(["gotchas", 0], "id 0123456789abcdef0123456789abcdef here"), "secret-suspect"),
+    ("secret-suspect-base64", _set(["gotchas", 0], RANDOM_B64), "secret-suspect"),
+    ("secret-suspect-key-prefix", _set(["gotchas", 0], "key AKIAABCDEFGHIJKLMNOP"), "secret-suspect"),
+    ("secret-suspect-in-section", _set(["sections", "roadmap", "body"], {"x": ["ghp_" + "a1" * 20]}), "secret-suspect"),
+    ("secret-suspect-env-style-assignment", _set(["gotchas", 0], "DB_PASSWORD=hunter2hunter2"), "secret-suspect"),
+    ("secret-allow-short-match", _set(["meta", "secret_allow", 0, "match"], "short"), "field-invalid"),
+    ("secret-allow-no-why", _delete(["meta", "secret_allow", 0, "why"]), "secret-allow-no-why"),
+    ("secret-allow-blank-why", _set(["meta", "secret_allow", 0, "why"], ""), "secret-allow-no-why"),
+    ("secret-allow-unused", _set(["meta", "secret_allow", 0, "match"], "zzz-never-present"), "secret-allow-unused"),
     ("layer-undeclared-node", _set(["nodes", 0, "layer"], "nowhere"), "layer-undeclared"),
     ("path-invalid-files-dotdot", _set(["nodes", 0, "files", 0], "../x.py"), "path-invalid"),
     ("path-invalid-files-backslash", _set(["nodes", 0, "files", 0], "app\\orders\\api.py"), "path-invalid"),
@@ -151,9 +175,14 @@ def _empty_file(root):
     (root / "app/orders/api.py").write_text("", encoding="utf-8")
 
 
+def _add_core_file(root):
+    (root / "web" / "extra.js").write_text("// new", encoding="utf-8")
+
+
 # (name, mutate_tree(root), expected_code): changes to files, not to the map.
 TREE_MUTATIONS = [
     ("line-invalid-file-emptied", _empty_file, "line-invalid"),
+    ("coverage-uncovered-new-file", _add_core_file, "coverage-uncovered"),
 ]
 
 

@@ -6,48 +6,14 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Any, Optional
 
 from . import schema
-from .paths import count_lines, exists_exact, expand_glob, is_glob, validate_rel_path
+from .paths import count_lines, covers, exists_exact, expand_glob, is_glob, validate_rel_path
 from .problems import Problem
-
-
-GUARD_CODES: frozenset[str] = frozenset({
-    "schema-missing", "schema-unknown", "section-missing", "field-missing", "field-invalid",
-    "field-unknown", "id-duplicate", "layer-undeclared", "path-invalid", "path-missing",
-    "glob-empty", "line-invalid", "edge-dangling", "edge-self", "node-orphan",
-    "step-node-missing", "flow-too-short",
-})
-
-
-def _problem(code: str, where: str, message: str) -> Problem:
-    if code not in GUARD_CODES:  # a programming error, never caused by map content
-        raise AssertionError(f"unregistered guard code {code!r}")
-    return Problem(code, where or "$", message)
-
-
-def _join(where: str, key: str) -> str:
-    return f"{where}.{key}" if where else key
-
-
-_SAFE_ID = re.compile(r"[A-Za-z0-9._:-]+")
-
-
-def _ident(obj: Any, index: int) -> str:
-    """Address an object by its id when it is a plain token, otherwise by index."""
-    if isinstance(obj, dict):
-        value = obj.get("id")
-        if isinstance(value, str) and _SAFE_ID.fullmatch(value):
-            return value
-    return str(index)
-
-
-def _seg(key: str) -> str:
-    """A key or section name as a `where` segment, with control characters escaped."""
-    return key if _SAFE_ID.fullmatch(key) else ascii(key)
+from .secrets import find_secrets
+from .where import GUARD_CODES, _SAFE_ID, _ident, _join, _problem, _seg  # noqa: F401
 
 
 def _blank(value: Any) -> bool:
@@ -199,7 +165,13 @@ class _Guard:
         allow = meta.get("secret_allow")
         if isinstance(allow, list):
             for i, item in enumerate(allow):
-                self.fields(item, f"meta.secret_allow[{i}]", schema.SECRET_ALLOW_FIELDS, schema.SECRET_ALLOW_REQUIRED)
+                if self.fields(item, f"meta.secret_allow[{i}]", schema.SECRET_ALLOW_FIELDS, schema.SECRET_ALLOW_REQUIRED):
+                    match = item.get("match")
+                    if isinstance(match, str) and 0 < len(match.strip()) and len(match) < schema.SECRET_ALLOW_MIN_MATCH:
+                        self.add(
+                            "field-invalid", f"meta.secret_allow[{i}].match",
+                            f"match must be at least {schema.SECRET_ALLOW_MIN_MATCH} characters",
+                        )
         return layer_ids
 
     def nodes(self, nodes: Any, layer_ids: Optional[set]) -> Optional[set]:
@@ -313,6 +285,73 @@ class _Guard:
                 elif "body" in section and "items" in section:
                     self.add("field-invalid", f"{where}.items", "give either 'body' or 'items', not both")
 
+    # ---- core coverage ---------------------------------------------------------
+
+    def core_files(self, core: list) -> set:
+        """Files under the core entries; reports empty and invalid entries."""
+        files: set = set()
+        for i, entry in enumerate(core):
+            where = f"meta.coverage.core[{i}]"
+            error = validate_rel_path(entry)
+            if error is not None:
+                self.add("path-invalid", where, f"{entry!r}: {error}")
+                continue
+            if is_glob(entry):
+                found = expand_glob(self.root, entry)
+            elif exists_exact(self.root, entry) == "dir":
+                found = expand_glob(self.root, entry.rstrip("/") + "/**")
+            elif exists_exact(self.root, entry) == "file" and not entry.endswith("/"):
+                found = [entry]
+            else:
+                found = []
+            if not found:
+                self.add("coverage-core-glob-empty", where, f"core entry {entry!r} matches no file")
+            files.update(found)
+        return files
+
+    def coverage(self, data: dict) -> None:
+        meta = data.get("meta")
+        cov = meta.get("coverage") if isinstance(meta, dict) else None
+        if not isinstance(cov, dict) or not isinstance(cov.get("core"), list):
+            return  # malformed: already reported by the structure rules
+        core = [e for e in cov["core"] if isinstance(e, str)]
+        if len(core) != len(cov["core"]):
+            return
+        if not core:
+            self.add("coverage-core-empty", "meta.coverage.core", "the core must list at least one entry")
+            return
+        files = self.core_files(core)
+        ignored = []
+        raw = cov.get("ignored")
+        for i, item in enumerate(raw if isinstance(raw, list) else []):
+            if not isinstance(item, dict) or not isinstance(item.get("glob"), str) or not item["glob"].strip():
+                continue
+            where = f"meta.coverage.ignored[{i}]"
+            why = item.get("why")
+            if "why" not in item or (isinstance(why, str) and not why.strip()):
+                self.add("coverage-ignore-no-why", f"{where}.why", "an ignored entry needs a 'why'")
+            error = validate_rel_path(item["glob"])
+            if error is not None:
+                self.add("path-invalid", f"{where}.glob", f"{item['glob']!r}: {error}")
+                continue
+            ignored.append((where, item["glob"]))
+        skipped: set = set()
+        for where, glob in ignored:
+            hits = {f for f in files if covers(glob, f, self.root)}
+            if not hits:
+                self.add("coverage-ignore-unused", where, f"ignored entry {glob!r} matches no core file")
+            skipped |= hits
+        entries = []
+        nodes = data.get("nodes")
+        for node in nodes if isinstance(nodes, list) else []:
+            listed = node.get("files") if isinstance(node, dict) else None
+            for entry in listed if isinstance(listed, list) else []:
+                if isinstance(entry, str) and validate_rel_path(entry) is None:
+                    entries.append(entry)
+        for rel in sorted(files - skipped):
+            if not any(covers(entry, rel, self.root) for entry in entries):
+                self.add("coverage-uncovered", "meta.coverage", f"core file {rel!r} is not covered by any node's files")
+
     # ---- entry ----------------------------------------------------------------
 
     def run(self, data: dict) -> list[Problem]:
@@ -342,6 +381,8 @@ class _Guard:
         self.notes(data.get("gotchas"), "gotchas")
         self.notes(data.get("unknowns"), "unknowns")
         self.sections(data.get("sections"))
+        self.coverage(data)
+        self.problems.extend(find_secrets(data))
         self.problems.sort(key=lambda p: (p.where, p.code))
         return self.problems
 
