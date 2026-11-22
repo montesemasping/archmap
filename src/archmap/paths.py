@@ -10,6 +10,12 @@ from typing import Literal, Optional
 SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules"})
 
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
+MAX_SEGMENTS = 128
+
+
+def too_broad(entry: str) -> bool:
+    """A `files` entry that would cover the whole tree: `*`, `**`, or one starting with `**`."""
+    return entry in ("*", "**") or entry.split("/", 1)[0] == "**"
 
 
 def validate_rel_path(p: str) -> Optional[str]:
@@ -25,6 +31,8 @@ def validate_rel_path(p: str) -> Optional[str]:
     segments = p.split("/")
     if segments[-1] == "":  # trailing '/' marks a directory
         segments = segments[:-1]
+    if len(segments) > MAX_SEGMENTS:
+        return f"path has more than {MAX_SEGMENTS} segments"
     for seg in segments:
         if seg == "":
             return "path has an empty segment ('//')"
@@ -92,26 +100,19 @@ def _segment_match(pat: str, name: str) -> bool:
 
 
 def glob_match(pattern: str, rel: str) -> bool:
+    """Segment-wise match with `**` for any number of segments. Iterative: it cannot recurse."""
     pat = pattern.split("/")
     parts = rel.split("/")
-    memo: dict[tuple[int, int], bool] = {}
-
-    def go(i: int, j: int) -> bool:
-        key = (i, j)
-        if key in memo:
-            return memo[key]
-        if i == len(pat):
-            res = j == len(parts)
-        elif pat[i] == "**":
-            res = go(i + 1, j) or (j < len(parts) and go(i, j + 1))
-        elif j < len(parts) and _segment_match(pat[i], parts[j]):
-            res = go(i + 1, j + 1)
+    n = len(parts)
+    reach = {0}  # path positions reachable after the pattern segments consumed so far
+    for seg in pat:
+        if not reach:
+            return False
+        if seg == "**":
+            reach = set(range(min(reach), n + 1))
         else:
-            res = False
-        memo[key] = res
-        return res
-
-    return go(0, 0)
+            reach = {j + 1 for j in reach if j < n and _segment_match(seg, parts[j])}
+    return n in reach
 
 
 def expand_glob(root: Path, pattern: str) -> list[str]:
@@ -165,15 +166,27 @@ def covers(entry: str, rel: str, root: Optional[Path] = None) -> bool:
     return False
 
 
-def count_lines(path: Path) -> Optional[int]:
-    """Number of text lines, or None for a binary file (NUL in the first 8 KiB, or not UTF-8)."""
+def _read_text(path: Path) -> tuple[Optional[str], Optional[str]]:
+    """(text, None), or (None, reason) when the file is not text."""
     with open(path, "rb") as fh:
         raw = fh.read()
     if b"\x00" in raw[:8192]:
-        return None
+        return None, "binary (NUL byte)"
     try:
-        text = raw.decode("utf-8-sig")
+        return raw.decode("utf-8-sig"), None
     except UnicodeDecodeError:
+        return None, "not valid UTF-8"
+
+
+def binary_reason(path: Path) -> Optional[str]:
+    """Why `count_lines` gives None for this file: "binary (NUL byte)" or "not valid UTF-8"."""
+    return _read_text(path)[1]
+
+
+def count_lines(path: Path) -> Optional[int]:
+    """Number of text lines, or None for a binary file (NUL in the first 8 KiB, or not UTF-8)."""
+    text, _ = _read_text(path)
+    if text is None:
         return None
     if text == "":
         return 0

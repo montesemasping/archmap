@@ -32,6 +32,26 @@ def _reject_duplicates(pairs: list) -> dict:
     return seen
 
 
+MAX_DEPTH = 200
+
+
+def _too_deep(value: Any) -> bool:
+    """Is the nesting of lists and objects deeper than MAX_DEPTH? Iterative, so it cannot recurse."""
+    stack = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, dict):
+            children = item.values()
+        elif isinstance(item, list):
+            children = item
+        else:
+            continue
+        if depth > MAX_DEPTH:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
+
+
 def load_map(path: str | os.PathLike) -> Any:
     """Read the map as UTF-8 (BOM allowed) and parse it. The root may be any JSON value."""
     where = os.fspath(path)
@@ -49,15 +69,19 @@ def load_map(path: str | os.PathLike) -> Any:
         raise MapLoadError(
             Problem("json-invalid", where, f"file is not valid UTF-8: {exc.reason}")
         ) from exc
+    too_deep = Problem("json-invalid", where, f"nesting deeper than {MAX_DEPTH}")
     try:
-        return json.loads(text, parse_constant=_reject_constant, object_pairs_hook=_reject_duplicates)
+        data = json.loads(text, parse_constant=_reject_constant, object_pairs_hook=_reject_duplicates)
     except _NonStandardJson as exc:
         raise MapLoadError(Problem("json-invalid", where, f"invalid JSON: {exc}")) from exc
     except json.JSONDecodeError as exc:
         raise MapLoadError(
             Problem("json-invalid", f"{where}:{exc.lineno}:{exc.colno}", f"invalid JSON: {exc.msg}")
         ) from exc
-    except (RecursionError, ValueError) as exc:
-        raise MapLoadError(
-            Problem("json-invalid", where, "map cannot be parsed (too deeply nested or a number is too large)")
-        ) from exc
+    except RecursionError as exc:
+        raise MapLoadError(too_deep) from exc
+    except ValueError as exc:
+        raise MapLoadError(Problem("json-invalid", where, "map cannot be parsed (a number is too large)")) from exc
+    if _too_deep(data):
+        raise MapLoadError(too_deep)
+    return data

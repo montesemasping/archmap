@@ -67,6 +67,9 @@ def _cmd_build(args: argparse.Namespace) -> int:
     if any(p.code in UNRENDERABLE for p in problems):
         print("not an archmap/1 map, nothing to render", file=sys.stderr)
         return 1
+    if any(p.code == "secret-suspect" for p in problems):
+        print("archmap: refusing to write HTML that would contain a suspected secret", file=sys.stderr)
+        return 1
     out = Path(args.output) if args.output else Path(args.root) / DEFAULT_OUT
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -88,9 +91,13 @@ def main(argv: Optional[list] = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
-    if args.command == "check":
-        return _cmd_check(args)
-    if args.command == "build":
-        return _cmd_build(args)
+    try:
+        if args.command == "check":
+            return _cmd_check(args)
+        if args.command == "build":
+            return _cmd_build(args)
+    except Exception as exc:  # the guard must never crash with a traceback or look like "problems found"
+        print(f"archmap: internal error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
     parser.print_usage(sys.stderr)
     return 2

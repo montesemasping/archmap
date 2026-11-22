@@ -22,13 +22,15 @@ _ESCAPES = {
 
 def _template_text() -> str:
     try:
-        from . import _bundled
-    except ImportError:
+        from ._bundled import TEMPLATE
+    except ModuleNotFoundError as exc:
+        if not (exc.name or "").endswith("_bundled"):
+            raise
         import importlib.resources
 
         resource = importlib.resources.files(__package__) / "template.html"
         return resource.read_text(encoding="utf-8")
-    return _bundled.TEMPLATE
+    return TEMPLATE
 
 
 def source_link(template: str, path: str, line: int | None) -> str:
