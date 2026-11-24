@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "archmap",
+  "owner": {
+    "name": "montesemasping",
+    "url": "https://github.com/montesemasping"
+  },
+  "description": "Install the archmap agent skill as a Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "archmap",
+      "source": "./",
+      "description": "Read, keep current and connect a guarded architecture map (docs/architecture-map.json, schema archmap/1) in a repository.",
+      "keywords": ["architecture", "documentation", "guard", "onboarding", "agents"]
+    }
+  ]
+}
