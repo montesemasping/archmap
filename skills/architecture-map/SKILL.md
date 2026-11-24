@@ -15,7 +15,7 @@ This skill ships inside the archmap repository, two directories above this file 
 |---|---|
 | Schema, commands, guard rules (reference) | `README.md` |
 | Small complete example map | `tests/fixtures/bakery/docs/architecture-map.json` |
-| Single-file build | `tools/build_single.py`, writes `dist/archmap.py` |
+| Single-file build (it writes `dist/archmap.py`) | `tools/build_single.py` |
 | Release notes | `CHANGELOG.md` |
 
 If only this file was installed, without the repository around it, clone the repository named in `.claude-plugin/plugin.json` (`repository`) or ask the user where archmap lives.
@@ -85,7 +85,9 @@ Iterate with `python tools/archmap/archmap.py check` until `no problems`. Then `
 
 Find out what runs on every change before choosing:
 - **CI exists**: add a step `python tools/archmap/archmap.py check` with only the interpreter set up. No path filter: the map drifts exactly in changes that do not think about it.
-- **No CI**: add a test to the suite that runs the check as a subprocess. It needs two assertions: the map passes (exit 0, `no problems`), and a mutation fails (remove one core file from its node's `files` in a temporary copy, pass that copy as `MAP` with `--root` at the repository, expect exit 1 and `[coverage-uncovered]`). Without the second, a guard that checks nothing would stay green.
+- **No CI**: add a test to the suite that runs the check as a subprocess. It needs two assertions, because without the second a guard that checks nothing would stay green:
+  1. the map passes: exit 0, `no problems`;
+  2. a mutation fails: pick one core file, and in a temporary copy of the map change the `files` entry that covers it so that this file is no longer covered (drop an exact path; replace a `dir/` or glob entry with the files it covered, minus the picked one). Run `check` with the copy's absolute path as `MAP` (a relative `MAP` resolves from the working directory, not from `--root`) and `--root` at the repository root. Expect exit 1 and `[coverage-uncovered]` naming the picked file.
 - Run the suite the way the project runs it. Shared fixtures may pull in a database, and a shared test database can sit on another branch's migration revision. Use a throwaway database rather than migrating a shared one.
 - If the project builds container images and excludes tests from them, exclude `tools/` and `docs/architecture-map.json` too.
 
