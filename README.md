@@ -42,6 +42,20 @@ two exceptions: it writes nothing for a map that is not `archmap/1`, and it refu
 write HTML (exit 1) when any problem is `secret-suspect`, so a suspected secret is never
 embedded in a page.
 
+## Agent skill
+
+`skills/architecture-map/SKILL.md` teaches a coding agent to read a map before exploring
+the code, to keep it current in the same change, and to connect archmap to a new project
+step by step. It is a starting point: copy it into your agent's skills directory and adapt
+it to your projects (where your repositories live, how you review and merge).
+
+With Claude Code it also installs as a plugin straight from this repository:
+
+```
+claude plugin marketplace add <this repository's URL or path>
+claude plugin install archmap@archmap
+```
+
 ## Commands
 
 ```

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Agent skill `skills/architecture-map/SKILL.md`: reading a map, keeping it current,
+  connecting archmap to a project. The repository is also a Claude Code plugin
+  (`.claude-plugin/plugin.json`, `marketplace.json`).
+
 ## 0.1.0
 
 - `check`: guards `docs/architecture-map.json` (schema `archmap/1`) against the code:
