@@ -1,20 +1,49 @@
 # archmap
 
-Status: private preview. No license is granted.
+archmap keeps an architecture map that a coding agent reads before it opens the code, and
+fails the build when the map and the code disagree.
 
-`archmap` is a stdlib-only Python 3.10+ tool. It guards a project's
-`docs/architecture-map.json` (schema `archmap/1`) so the map cannot drift from the
-code, and builds an offline, single-file HTML viewer of it.
+A hand-written `ARCHITECTURE.md` is accurate on the day it's written and drifts after the
+next refactor. archmap stores the map as data. `docs/architecture-map.json` lists the
+project's components, the files each one owns, how they call each other, and the main flows
+step by step with `file:line` references. `archmap check` reads it next to the code and
+reports paths that no longer exist, source files no component owns, edges to missing
+components, and strings that look like credentials. Put it in CI, and a change that moves
+code without updating the map fails.
+
+`archmap build` turns the same file into one offline HTML page:
+
+![The viewer: layers as columns, the Checkout flow highlighted step by step, its steps linked to source on the right](docs/viewer.png)
+
+archmap is a single Python file that uses only the standard library and needs Python 3.10
+or newer. There's nothing to install, and it makes no network calls.
+
+## Quick start
+
+```
+mkdir -p tools/archmap
+curl -L -o tools/archmap/archmap.py https://github.com/montesemasping/archmap/releases/latest/download/archmap.py
+python tools/archmap/archmap.py check
+```
+
+Without a map, `check` exits with code 2 and says so. Write `docs/architecture-map.json`
+starting from the example in
+[`tests/fixtures/bakery/docs/architecture-map.json`](tests/fixtures/bakery/docs/architecture-map.json),
+or let a coding agent write it with the [agent skill](#agent-skill). Then add the `check`
+line to your CI.
 
 ## Install: one file
 
 A project vendors a single file and needs nothing else (no pip, no dependencies).
 
-1. Get `dist/archmap.py`: the repository's CI produces it as the `archmap-single-file`
-   artifact once it runs, or build it locally with `python tools/build_single.py`.
-2. Copy it to `tools/archmap/archmap.py` in your project and commit it.
+1. Download `archmap.py` from a [release](https://github.com/montesemasping/archmap/releases).
+   The release also carries `archmap.py.sha256` to verify it against.
+2. Put it at `tools/archmap/archmap.py` in your project and commit it.
 
-The file is generated. Do not edit it; replace it with a newer build to upgrade.
+The build is deterministic, so you can make the same file yourself: check out a release
+tag and run `python tools/build_single.py`, which writes `dist/archmap.py`.
+
+The file is generated. Do not edit it; replace it with a newer release to upgrade.
 
 ### In the project's CI
 
@@ -52,7 +81,7 @@ it to your projects (where your repositories live, how you review and merge).
 With Claude Code it also installs as a plugin straight from this repository:
 
 ```
-claude plugin marketplace add <this repository's URL or path>
+claude plugin marketplace add montesemasping/archmap
 claude plugin install archmap@archmap
 ```
 
@@ -144,3 +173,7 @@ pytest -q                          # tests against the package
 python tools/build_single.py       # writes dist/archmap.py (git-ignored)
 ARCHMAP_IMPL=dist pytest -q        # the same tests against the single file
 ```
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
