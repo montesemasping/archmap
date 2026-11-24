@@ -68,7 +68,8 @@ Without network access to releases, build the same file from a release tag. The 
 ```
 git -C <archmap> checkout v<X.Y.Z>        # or clone it with --branch v<X.Y.Z> --depth 1
 python <archmap>/tools/build_single.py    # writes <archmap>/dist/archmap.py
-``` Upgrading means replacing the file with a newer build. Never edit it; report an archmap bug upstream and work around it in the project.
+```
+Upgrading means replacing the file with a newer build. Never edit it; report an archmap bug upstream and work around it in the project.
 
 ### 3.3 Write `docs/architecture-map.json`
 

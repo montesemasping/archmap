@@ -20,9 +20,19 @@ or newer. There's nothing to install, and it makes no network calls.
 
 ## Quick start
 
+In a POSIX shell (Linux, macOS, Git Bash), from your project's root:
+
 ```
 mkdir -p tools/archmap
-curl -L -o tools/archmap/archmap.py https://github.com/montesemasping/archmap/releases/latest/download/archmap.py
+curl -fL -o tools/archmap/archmap.py https://github.com/montesemasping/archmap/releases/latest/download/archmap.py
+python tools/archmap/archmap.py check
+```
+
+In PowerShell:
+
+```
+New-Item -ItemType Directory -Force tools/archmap | Out-Null
+Invoke-WebRequest https://github.com/montesemasping/archmap/releases/latest/download/archmap.py -OutFile tools/archmap/archmap.py
 python tools/archmap/archmap.py check
 ```
 
@@ -36,9 +46,21 @@ line to your CI.
 
 A project vendors a single file and needs nothing else (no pip, no dependencies).
 
-1. Download `archmap.py` from a [release](https://github.com/montesemasping/archmap/releases).
-   The release also carries `archmap.py.sha256` to verify it against.
-2. Put it at `tools/archmap/archmap.py` in your project and commit it.
+1. Download `archmap.py` and `archmap.py.sha256` from a
+   [release](https://github.com/montesemasping/archmap/releases) and check one against the other:
+
+   ```
+   curl -fLO https://github.com/montesemasping/archmap/releases/latest/download/archmap.py -fLO https://github.com/montesemasping/archmap/releases/latest/download/archmap.py.sha256
+   sha256sum -c archmap.py.sha256           # macOS: shasum -a 256 -c archmap.py.sha256
+   ```
+
+   In PowerShell, compare the two hashes by eye or with:
+
+   ```
+   (Get-FileHash archmap.py -Algorithm SHA256).Hash.ToLower() -eq (Get-Content archmap.py.sha256).Split(' ')[0]
+   ```
+
+2. Move `archmap.py` to `tools/archmap/archmap.py` in your project and commit it.
 
 The build is deterministic, so you can make the same file yourself: check out a release
 tag and run `python tools/build_single.py`, which writes `dist/archmap.py`.
