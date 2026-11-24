@@ -2,7 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "archmap",
   "description": "Read, keep current and connect a guarded architecture map (docs/architecture-map.json, schema archmap/1) in a repository.",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "license": "MIT",
   "author": {
     "name": "montesemasping",
     "url": "https://github.com/montesemasping"

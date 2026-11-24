@@ -62,12 +62,14 @@ The checked-out branch is not necessarily where work happens. Before branching, 
 
 ### 3.2 Vendor the guard
 
-Build the single file from a release tag of archmap:
+Download `archmap.py` from a release of the archmap repository and check it against the `archmap.py.sha256` attached to the same release. Put it at `tools/archmap/archmap.py` in the project and commit it unchanged. `python tools/archmap/archmap.py --version` prints the version.
+
+Without network access to releases, build the same file from a release tag. The build is deterministic, so it gives the same bytes:
 ```
 git -C <archmap> checkout v<X.Y.Z>        # or clone it with --branch v<X.Y.Z> --depth 1
 python <archmap>/tools/build_single.py    # writes <archmap>/dist/archmap.py
 ```
-Copy `dist/archmap.py` to `tools/archmap/archmap.py` in the project and commit it unchanged. `python tools/archmap/archmap.py --version` prints the version. The build is deterministic: rebuilding the same tag gives the same bytes, so a vendored copy can be verified by rebuilding and comparing hashes. Upgrading means replacing the file with a newer build. Never edit it; report an archmap bug upstream and work around it in the project.
+Upgrading means replacing the file with a newer build. Never edit it; report an archmap bug upstream and work around it in the project.
 
 ### 3.3 Write `docs/architecture-map.json`
 

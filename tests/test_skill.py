@@ -105,6 +105,15 @@ def test_skill_repo_references_exist():
         assert (ROOT / rel).exists(), rel
 
 
+@pytest.mark.parametrize("doc", [SKILL, ROOT / "README.md"], ids=["skill", "readme"])
+def test_code_fences_are_well_formed(doc):
+    """A fence line with trailing text does not close the block on GitHub."""
+    fences = [line for line in doc.read_text(encoding="utf-8").splitlines() if line.lstrip().startswith("```")]
+    for line in fences:
+        assert re.fullmatch(r"\s*```[a-z]*", line), f"malformed fence in {doc.name}: {line!r}"
+    assert len(fences) % 2 == 0, f"unbalanced fences in {doc.name}"
+
+
 def test_skill_has_no_machine_paths():
     text = _text()
     assert not re.search(r"\b[A-Za-z]:[\\/]", text), "drive-letter path in SKILL.md"

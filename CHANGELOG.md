@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
+- MIT license.
+- Releases attach the single file `archmap.py` with its SHA-256; README and the agent
+  skill install from there.
 - Agent skill `skills/architecture-map/SKILL.md`: reading a map, keeping it current,
   connecting archmap to a project. The repository is also a Claude Code plugin
   (`.claude-plugin/plugin.json`, `marketplace.json`).
